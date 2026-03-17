@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Echo Gateway</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #0a0a0a;
+      --surface:  #111111;
+      --border:   #1e1e1e;
+      --muted:    #333333;
+      --text:     #e8e8e8;
+      --subtle:   #666666;
+      --accent:   #00ff87;
+      --warn:     #ff6b35;
+      --danger:   #ff3b3b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-weight: 300;
+      min-height: 100vh;
+    }
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+    .accent { color: var(--accent); }
+    .subtle { color: var(--subtle); }
+    .warn   { color: var(--warn); }
+    .danger { color: var(--danger); }
+
+    /* Layout */
+    nav {
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 10;
+    }
+    .nav-logo {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+    }
+    .nav-links { display: flex; gap: 2rem; }
+    .nav-links a {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-decoration: none;
+      color: var(--subtle);
+      text-transform: uppercase;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover, .nav-links a.active { color: var(--text); }
+
+    main { max-width: 1000px; margin: 0 auto; padding: 3rem 2rem; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 1.5rem;
+    }
+    .card-label {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--subtle);
+      margin-bottom: 0.75rem;
+    }
+
+    /* Status pill */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 11px;
+      font-family: 'IBM Plex Mono', monospace;
+      padding: 2px 8px;
+      border-radius: 2px;
+      letter-spacing: 0.05em;
+    }
+    .pill-green  { background: rgba(0,255,135,0.08); color: var(--accent); border: 1px solid rgba(0,255,135,0.2); }
+    .pill-red    { background: rgba(255,59,59,0.08);  color: var(--danger); border: 1px solid rgba(255,59,59,0.2); }
+    .pill-orange { background: rgba(255,107,53,0.08); color: var(--warn);   border: 1px solid rgba(255,107,53,0.2); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* Progress bar */
+    .progress-track {
+      height: 3px;
+      background: var(--muted);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 1px;
+      transition: width 0.5s ease;
+    }
+    .progress-fill.warn { background: var(--warn); }
+    .progress-fill.danger { background: var(--danger); }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: 0.08em;
+      border: none;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      font-weight: 500;
+    }
+    .btn-primary:hover { background: #00cc6e; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--subtle);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { border-color: var(--muted); color: var(--text); }
+    .btn-danger {
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid rgba(255,59,59,0.3);
+    }
+    .btn-danger:hover { background: rgba(255,59,59,0.08); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Input */
+    input, select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 2px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    label {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--subtle);
+      margin-bottom: 6px;
+    }
+
+    /* Divider */
+    hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+    /* Stat row */
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 6px 0;
+    }
+    .stat-key {
+      font-size: 11px;
+      color: var(--subtle);
+      letter-spacing: 0.05em;
+    }
+    .stat-val {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    /* Section heading */
+    h2 {
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--subtle);
+      margin-bottom: 1rem;
+      font-weight: 400;
+    }
+
+    /* Grid */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+    @media (max-width: 640px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    /* Alert */
+    .alert {
+      padding: 12px 16px;
+      border-radius: 2px;
+      font-size: 12px;
+      border-left: 3px solid;
+    }
+    .alert-info    { background: rgba(0,255,135,0.05); border-color: var(--accent); color: var(--accent); }
+    .alert-warning { background: rgba(255,107,53,0.05); border-color: var(--warn);   color: var(--warn);   }
+    .alert-error   { background: rgba(255,59,59,0.05);  border-color: var(--danger); color: var(--danger); }
+
+    /* Onboarding steps */
+    .step {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .step:last-child { border-bottom: none; }
+    .step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 2px;
+      background: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .step-num.done { background: var(--accent); color: #000; }
+    .step-num.active { background: rgba(0,255,135,0.15); color: var(--accent); border: 1px solid rgba(0,255,135,0.3); }
+    .step-content { flex: 1; }
+    .step-title { font-size: 13px; margin-bottom: 4px; }
+    .step-desc  { font-size: 11px; color: var(--subtle); line-height: 1.5; }
+
+    /* Token address display */
+    .addr {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      color: var(--subtle);
+    }
+
+    /* Loading spinner */
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--muted);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Fade in */
+    .fade-in { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Hidden */
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-logo">ECHO //</span>
+  <div class="nav-links">
+    <a href="/" class="active">Policy</a>
+    <a href="/sessions">Sessions</a>
+  </div>
+  <div id="wallet-status-wrap" style="position:relative">
+    <div id="wallet-status"
+      style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:var(--subtle); cursor:default"
+      onclick="toggleWalletMenu()">
+      not connected
+    </div>
+    <div id="wallet-menu" style="
+      display:none; position:absolute; right:0; top:calc(100% + 8px);
+      background:#111; border:1px solid #1e1e1e; border-radius:2px;
+      min-width:160px; z-index:50; overflow:hidden;
+    ">
+      <div style="padding:8px 12px; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#444; border-bottom:1px solid #1e1e1e">
+        Wallet
+      </div>
+      <div id="wallet-menu-addr" style="padding:8px 12px; font-size:11px; color:#666; font-family:'IBM Plex Mono',monospace; word-break:break-all; border-bottom:1px solid #1e1e1e"></div>
+      <button onclick="disconnectWallet()" style="
+        display:block; width:100%; text-align:left; padding:8px 12px;
+        background:transparent; border:none; cursor:pointer;
+        font-size:11px; font-family:'IBM Plex Mono',monospace;
+        color:#ff6b35; letter-spacing:0.05em;
+        transition:background 0.15s;
+      " onmouseover="this.style.background='rgba(255,107,53,0.08)'"
+         onmouseout="this.style.background='transparent'">
+        Disconnect
+      </button>
+    </div>
+  </div>
+</nav>
+
+<main>
+
+  <!-- ── Onboarding (shown when no keys registered) ── -->
+  <div id="onboarding" class="hidden fade-in">
+    <div style="margin-bottom:2rem">
+      <div style="font-size:22px; font-weight:300; margin-bottom:0.5rem">
+        Set up your <span class="accent">Echo Account</span>
+      </div>
+      <div style="font-size:13px; color:var(--subtle); line-height:1.6">
+        Create an on-chain smart account with enforced spending limits.<br>
+        Your AI agent will operate within these boundaries — no exceptions.
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:1.5rem">
+      <div class="card-label">Setup steps</div>
+      <div class="step">
+        <div class="step-num" id="step1-num">1</div>
+        <div class="step-content">
+          <div class="step-title">Connect wallet</div>
+          <div class="step-desc">MetaMask or any EIP-1193 wallet. You'll sign two transactions.</div>
+          <div style="margin-top:0.75rem">
+            <button class="btn btn-primary" id="connect-btn" onclick="connectWallet()">Connect Wallet</button>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num" id="step2-num">2</div>
+        <div class="step-content">
+          <div class="step-title">Choose policy template</div>
+          <div class="step-desc">Pick a starting point for your spending limits. You can adjust later.</div>
+          <div style="margin-top:0.75rem; display:flex; gap:0.75rem; flex-wrap:wrap" id="template-picker">
+            <button class="btn btn-ghost" onclick="selectTemplate('conservative')" id="tpl-conservative">Conservative</button>
+            <button class="btn btn-ghost" onclick="selectTemplate('standard')"     id="tpl-standard">Standard</button>
+            <button class="btn btn-ghost" onclick="selectTemplate('active')"       id="tpl-active">Active</button>
+          </div>
+          <div id="template-detail" class="hidden" style="margin-top:0.75rem">
+            <div class="card" style="padding:1rem">
+              <div id="template-detail-content"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num" id="step3-num">3</div>
+        <div class="step-content">
+          <div class="step-title">Create account on-chain</div>
+          <div class="step-desc">
+            Deploys your AccountERC7579 and registers your PolicyInstance in one transaction.
+          </div>
+          <div style="margin-top:0.75rem">
+            <button class="btn btn-primary hidden" id="create-btn" onclick="createAccount()">
+              Create Account
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num" id="step4-num">4</div>
+        <div class="step-content">
+          <div class="step-title">Register signing key</div>
+          <div class="step-desc">Gateway generates an execute key and links it to your account. No private key leaves this machine.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="onboarding-error" class="alert alert-error hidden" style="margin-bottom:1rem"></div>
+    <div id="onboarding-success" class="alert alert-info hidden" style="margin-bottom:1rem"></div>
+  </div>
+
+  <!-- ── Policy Dashboard (shown when account registered) ── -->
+  <div id="dashboard" class="hidden fade-in">
+
+    <!-- Header row -->
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:2rem">
+      <div>
+        <div style="font-size:11px; color:var(--subtle); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:4px">Active Policy</div>
+        <div class="mono" style="font-size:13px" id="instance-id-display">—</div>
+      </div>
+      <div style="display:flex; gap:0.5rem; align-items:center">
+        <div id="pause-status"></div>
+        <button class="btn btn-danger hidden" id="pause-btn" onclick="pauseInstance()">⏸ Pause</button>
+        <button class="btn btn-ghost" onclick="refreshPolicy()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <!-- Global budget cards -->
+    <div class="grid-3" style="margin-bottom:1.5rem">
+      <div class="card">
+        <div class="card-label">Total Budget</div>
+        <div style="font-size:20px; font-family:'IBM Plex Mono',monospace; margin-bottom:0.5rem" id="total-budget">—</div>
+        <div class="progress-track">
+          <div class="progress-fill" id="total-progress" style="width:0%"></div>
+        </div>
+        <div style="margin-top:0.5rem; font-size:11px; color:var(--subtle)">
+          <span id="total-spent">—</span> spent
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Daily Limit</div>
+        <div style="font-size:20px; font-family:'IBM Plex Mono',monospace; margin-bottom:0.5rem" id="daily-limit">—</div>
+        <div class="progress-track">
+          <div class="progress-fill" id="daily-progress" style="width:0%"></div>
+        </div>
+        <div style="margin-top:0.5rem; font-size:11px; color:var(--subtle)">
+          <span id="daily-spent">—</span> today
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Exploration Budget</div>
+        <div style="font-size:20px; font-family:'IBM Plex Mono',monospace; margin-bottom:0.5rem" id="explore-budget">—</div>
+        <div class="progress-track">
+          <div class="progress-fill" id="explore-progress" style="width:0%"></div>
+        </div>
+        <div style="margin-top:0.5rem; font-size:11px; color:var(--subtle)">
+          <span id="explore-spent">—</span> spent
+        </div>
+      </div>
+    </div>
+
+    <!-- Token limits -->
+    <div style="margin-bottom:1.5rem">
+      <h2>Token Limits</h2>
+      <div id="token-limits-list">
+        <div style="color:var(--subtle); font-size:12px; padding:1rem 0">No token limits configured.</div>
+      </div>
+    </div>
+
+    <!-- Allowed targets -->
+    <div style="margin-bottom:1.5rem">
+      <h2>Allowed Targets</h2>
+      <div id="targets-list">
+        <div style="color:var(--subtle); font-size:12px; padding:1rem 0">No targets configured.</div>
+      </div>
+    </div>
+
+    <!-- Policy expiry -->
+    <div class="card">
+      <div class="stat-row">
+        <span class="stat-key">Policy expires</span>
+        <span class="stat-val" id="policy-expiry">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-key">Smart account</span>
+        <span class="stat-val addr" id="account-address">—</span>
+      </div>
+    </div>
+
+    <div id="dashboard-error" class="alert alert-error hidden" style="margin-top:1rem"></div>
+  </div>
+
+  <!-- Loading state -->
+  <div id="loading" style="text-align:center; padding:4rem; color:var(--subtle); font-size:13px">
+    <div class="spinner" style="margin:0 auto 1rem"></div>
+    Connecting to Gateway...
+  </div>
+
+</main>
+
+<script src="/assets/app.js"></script>
+<script>
+// ── Token symbol lookup (Sepolia) ──
+const TOKEN_SYMBOLS = {
+  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 'USDC',
+  '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 'WETH',
+  '0x7169d38820dfd117c3fa1f22a697dba58d90ba06': 'USDT',
+  '0xffd4505b3452dc22f8473616d42503a1a9f065b0': 'WBTC',
+};
+function tokenSymbol(addr) {
+  return TOKEN_SYMBOLS[addr?.toLowerCase()] ?? addr?.slice(0,6)+'…'+addr?.slice(-4);
+}
+
+// ── Format USDC (6 decimals) ──
+function fmtUsdc(raw) {
+  const n = Number(raw) / 1e6;
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ── Progress fill class ──
+function progressClass(pct) {
+  if (pct >= 90) return 'danger';
+  if (pct >= 70) return 'warn';
+  return '';
+}
+
+// ── Selected template ──
+let selectedTemplate = null;
+let gatewayConfig    = null;
+let currentPolicy    = null;
+
+async function init() {
+  try {
+    gatewayConfig = await fetch('/api/config').then(r => r.json());
+    const keysRes = await fetch('/api/keys').then(r => r.json());
+
+    document.getElementById('loading').classList.add('hidden');
+
+    if (keysRes.keys && keysRes.keys.length > 0) {
+      // Has registered account — show dashboard
+      const key = keysRes.keys[0];
+      await loadPolicy(key.instanceId, key.accountAddress);
+    } else {
+      // No account yet — show onboarding
+      document.getElementById('onboarding').classList.remove('hidden');
+    }
+  } catch (err) {
+    document.getElementById('loading').innerHTML =
+      `<div class="alert alert-error">Gateway connection failed: ${err.message}</div>`;
+  }
+}
+
+async function loadPolicy(instanceId, accountAddress) {
+  try {
+    const policy = await fetch(`/api/policy/${instanceId}`).then(r => r.json());
+    if (policy.error) throw new Error(policy.error);
+    currentPolicy = policy;
+
+    // Update wallet status — show account address even without provider connected
+    if (!window._echoProvider) {
+      const ws = document.getElementById('wallet-status');
+      ws.textContent = accountAddress
+        ? accountAddress.slice(0,6)+'…'+accountAddress.slice(-4)
+        : instanceId.slice(0,6)+'…'+instanceId.slice(-4);
+      ws.style.color  = 'var(--accent)';
+      ws.style.cursor = 'pointer';
+      document.getElementById('wallet-menu-addr').textContent = accountAddress ?? instanceId;
+    }
+
+    document.getElementById('dashboard').classList.remove('hidden');
+    document.getElementById('instance-id-display').textContent =
+      instanceId.slice(0,10) + '…' + instanceId.slice(-8);
+    document.getElementById('account-address').textContent = accountAddress ?? '—';
+
+    // Status
+    const pauseStatus = document.getElementById('pause-status');
+    const pauseBtn    = document.getElementById('pause-btn');
+    if (policy.paused) {
+      pauseStatus.innerHTML = '<span class="pill pill-red"><span class="dot"></span>PAUSED</span>';
+    } else {
+      pauseStatus.innerHTML = '<span class="pill pill-green"><span class="dot"></span>ACTIVE</span>';
+      pauseBtn.classList.remove('hidden');
+      pauseBtn.dataset.instanceId = instanceId;
+    }
+
+    // Expiry
+    const expDate = new Date(policy.expiry * 1000);
+    document.getElementById('policy-expiry').textContent = expDate.toLocaleDateString('en-US', {
+      year:'numeric', month:'short', day:'numeric'
+    });
+
+    // Total budget
+    const totalBudget = Number(policy.globalTotalBudget);
+    const totalSpent  = Number(policy.globalTotalSpent);
+    const totalPct    = totalBudget > 0 ? Math.round(totalSpent / totalBudget * 100) : 0;
+    document.getElementById('total-budget').textContent  = fmtUsdc(totalBudget);
+    document.getElementById('total-spent').textContent   = fmtUsdc(totalSpent);
+    const totalBar = document.getElementById('total-progress');
+    totalBar.style.width = totalPct + '%';
+    totalBar.className   = 'progress-fill ' + progressClass(totalPct);
+
+    // Daily
+    const dailyLimit = Number(policy.globalMaxPerDay);
+    const dailySpent = Number(policy.globalDailySpent);
+    const dailyPct   = dailyLimit > 0 ? Math.round(dailySpent / dailyLimit * 100) : 0;
+    document.getElementById('daily-limit').textContent = fmtUsdc(dailyLimit);
+    document.getElementById('daily-spent').textContent = fmtUsdc(dailySpent);
+    const dailyBar = document.getElementById('daily-progress');
+    dailyBar.style.width = dailyPct + '%';
+    dailyBar.className   = 'progress-fill ' + progressClass(dailyPct);
+
+    // Exploration
+    const exBudget = Number(policy.explorationBudget);
+    const exSpent  = Number(policy.explorationSpent);
+    const exPct    = exBudget > 0 ? Math.round(exSpent / exBudget * 100) : 0;
+    document.getElementById('explore-budget').textContent = fmtUsdc(exBudget);
+    document.getElementById('explore-spent').textContent  = fmtUsdc(exSpent);
+    const exBar = document.getElementById('explore-progress');
+    exBar.style.width = exPct + '%';
+    exBar.className   = 'progress-fill ' + progressClass(exPct);
+
+    // Token limits
+    const tlContainer = document.getElementById('token-limits-list');
+    if (policy.tokenLimits.length > 0) {
+      tlContainer.innerHTML = policy.tokenLimits.map(tl => {
+        const pct = Number(tl.maxPerDay) > 0
+          ? Math.round(Number(tl.dailySpent) / Number(tl.maxPerDay) * 100) : 0;
+        return `
+          <div class="card" style="margin-bottom:0.75rem">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem">
+              <span style="font-size:13px">${tokenSymbol(tl.token)}</span>
+              <span class="addr">${tl.token.slice(0,8)}…${tl.token.slice(-6)}</span>
+            </div>
+            <div class="grid-2" style="gap:0.5rem; margin-bottom:0.75rem">
+              <div>
+                <div class="stat-key" style="margin-bottom:3px">Per op</div>
+                <div class="stat-val">${fmtUsdc(tl.maxPerOp)}</div>
+              </div>
+              <div>
+                <div class="stat-key" style="margin-bottom:3px">Daily limit</div>
+                <div class="stat-val">${fmtUsdc(tl.maxPerDay)}</div>
+              </div>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill ${progressClass(pct)}" style="width:${pct}%"></div>
+            </div>
+            <div style="margin-top:4px; font-size:11px; color:var(--subtle)">
+              ${fmtUsdc(tl.dailySpent)} spent today
+            </div>
+          </div>`;
+      }).join('');
+    } else {
+      tlContainer.innerHTML = '<div style="color:var(--subtle); font-size:12px; padding:0.5rem 0">No token limits — exploration mode only.</div>';
+    }
+
+    // Allowed targets
+    const tgContainer = document.getElementById('targets-list');
+    if (policy.allowedTargets && policy.allowedTargets.length > 0) {
+      tgContainer.innerHTML = policy.allowedTargets.map(t => `
+        <div class="stat-row">
+          <span class="mono" style="font-size:12px; color:var(--subtle)">${t}</span>
+        </div>`).join('');
+    }
+
+  } catch (err) {
+    document.getElementById('dashboard-error').textContent = err.message;
+    document.getElementById('dashboard-error').classList.remove('hidden');
+  }
+}
+
+// ── Template selection ──
+const TEMPLATE_INFO = {
+  conservative: {
+    label: 'Conservative',
+    perOp: '$50', perDay: '$200', globalDay: '$400', globalTotal: '$2,000',
+    desc: 'Best for cautious, infrequent swaps. Low limits, suitable for testing.',
+  },
+  standard: {
+    label: 'Standard',
+    perOp: '$100', perDay: '$500', globalDay: '$1,000', globalTotal: '$5,000',
+    desc: 'Balanced limits for regular DeFi usage. Recommended for most users.',
+  },
+  active: {
+    label: 'Active',
+    perOp: '$500', perDay: '$2,000', globalDay: '$4,000', globalTotal: '$20,000',
+    desc: 'High limits for power users and active trading strategies.',
+  },
+};
+
+function selectTemplate(name) {
+  selectedTemplate = name;
+  ['conservative','standard','active'].forEach(n => {
+    document.getElementById('tpl-'+n).classList.remove('btn-primary');
+    document.getElementById('tpl-'+n).classList.add('btn-ghost');
+  });
+  document.getElementById('tpl-'+name).classList.remove('btn-ghost');
+  document.getElementById('tpl-'+name).classList.add('btn-primary');
+
+  const info = TEMPLATE_INFO[name];
+  document.getElementById('template-detail-content').innerHTML = `
+    <div style="font-size:11px; color:var(--subtle); margin-bottom:0.75rem; line-height:1.5">${info.desc}</div>
+    <div class="grid-2" style="gap:0.75rem">
+      <div><div class="stat-key">Per swap max</div><div class="stat-val">${info.perOp}</div></div>
+      <div><div class="stat-key">Token daily cap</div><div class="stat-val">${info.perDay}</div></div>
+      <div><div class="stat-key">Global daily cap</div><div class="stat-val">${info.globalDay}</div></div>
+      <div><div class="stat-key">Lifetime budget</div><div class="stat-val">${info.globalTotal}</div></div>
+    </div>
+    <div style="margin-top:0.75rem; font-size:10px; color:var(--subtle); letter-spacing:0.05em">
+      ✓ Uniswap V3 · USDC · 90 day expiry
+    </div>`;
+  document.getElementById('template-detail').classList.remove('hidden');
+  document.getElementById('create-btn').classList.remove('hidden');
+  document.getElementById('step2-num').classList.add('active');
+  document.getElementById('step3-num').classList.add('active');
+}
+
+// ── Wallet menu ────────────────────────────────────────────────────────
+let walletMenuOpen = false;
+function toggleWalletMenu() {
+  if (!window._echoProvider) return;
+  walletMenuOpen = !walletMenuOpen;
+  document.getElementById('wallet-menu').style.display = walletMenuOpen ? 'block' : 'none';
+}
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('wallet-status-wrap')?.contains(e.target)) {
+    document.getElementById('wallet-menu').style.display = 'none';
+    walletMenuOpen = false;
+  }
+});
+function disconnectWallet() {
+  window._echoProvider = null;
+  activeProvider = null;
+  document.getElementById('wallet-status').textContent = 'not connected';
+  document.getElementById('wallet-status').style.color = 'var(--subtle)';
+  document.getElementById('wallet-status').style.cursor = 'default';
+  document.getElementById('wallet-menu').style.display = 'none';
+  document.getElementById('wallet-menu-addr').textContent = '';
+  walletMenuOpen = false;
+  // Reset onboarding step 1
+  document.getElementById('connect-btn').textContent = 'Connect Wallet';
+  document.getElementById('connect-btn').disabled = false;
+  document.getElementById('step1-num').className = 'step-num active';
+}
+
+// ── EIP-6963 Multi-wallet support ──────────────────────────────────────
+const detectedWallets = new Map(); // rdns → { info, provider }
+
+window.addEventListener('eip6963:announceProvider', (event) => {
+  const { info, provider } = event.detail;
+  detectedWallets.set(info.rdns, { info, provider });
+});
+window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+// Active provider (set after user picks a wallet)
+let activeProvider = null;
+
+function showWalletPicker() {
+  // Wait a tick for wallets to announce
+  setTimeout(() => {
+    // Also include legacy window.ethereum if present and not already listed
+    if (window.ethereum && !detectedWallets.size) {
+      detectedWallets.set('legacy', {
+        info: { name: 'Browser Wallet', icon: '', rdns: 'legacy' },
+        provider: window.ethereum,
+      });
+    }
+
+    if (!detectedWallets.size) {
+      showOnboardingError('No wallet detected. Please install MetaMask, OKX Wallet, or another EIP-1193 wallet.');
+      return;
+    }
+
+    // Build picker UI
+    const overlay = document.createElement('div');
+    overlay.id = 'wallet-overlay';
+    overlay.style.cssText = `
+      position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:100;
+      display:flex; align-items:center; justify-content:center;
+    `;
+
+    const box = document.createElement('div');
+    box.style.cssText = `
+      background:#111; border:1px solid #1e1e1e; border-radius:4px;
+      padding:1.5rem; min-width:280px; max-width:360px; width:100%;
+    `;
+
+    box.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
+        <span style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; color:#666">Select Wallet</span>
+        <button onclick="document.getElementById('wallet-overlay').remove()"
+          style="background:none; border:none; color:#666; cursor:pointer; font-size:16px; line-height:1">×</button>
+      </div>
+      <div id="wallet-list"></div>
+    `;
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const list = document.getElementById('wallet-list');
+    detectedWallets.forEach(({ info, provider }) => {
+      const btn = document.createElement('button');
+      btn.style.cssText = `
+        display:flex; align-items:center; gap:0.75rem; width:100%;
+        background:transparent; border:1px solid #1e1e1e; border-radius:2px;
+        padding:10px 12px; margin-bottom:0.5rem; cursor:pointer; color:#e8e8e8;
+        font-family:'IBM Plex Mono',monospace; font-size:12px;
+        transition: border-color 0.15s;
+      `;
+      btn.onmouseover = () => btn.style.borderColor = '#333';
+      btn.onmouseout  = () => btn.style.borderColor = '#1e1e1e';
+      btn.innerHTML = `
+        ${info.icon ? `<img src="${info.icon}" style="width:20px;height:20px;border-radius:4px" />` : '<div style="width:20px;height:20px;background:#222;border-radius:4px"></div>'}
+        <span>${info.name}</span>
+      `;
+      btn.onclick = () => {
+        document.getElementById('wallet-overlay').remove();
+        connectWithProvider(provider, info.name);
+      };
+      list.appendChild(btn);
+    });
+
+    overlay.onclick = (e) => {
+      if (e.target === overlay) overlay.remove();
+    };
+  }, 100);
+}
+
+async function connectWallet() {
+  showWalletPicker();
+}
+
+async function connectWithProvider(provider, walletName) {
+  try {
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    const addr = accounts[0];
+    activeProvider = provider;
+    window._echoProvider = provider; // store for later use
+
+    document.getElementById('wallet-status').textContent = addr.slice(0,6)+'…'+addr.slice(-4);
+    document.getElementById('wallet-status').style.color = 'var(--accent)';
+    document.getElementById('wallet-status').style.cursor = 'pointer';
+    document.getElementById('wallet-menu-addr').textContent = addr;
+    document.getElementById('connect-btn').innerHTML = '✓ ' + walletName;
+    document.getElementById('connect-btn').disabled = true;
+    document.getElementById('step1-num').className = 'step-num done';
+    document.getElementById('step2-num').className = 'step-num active';
+  } catch (err) {
+    showOnboardingError('Wallet connection rejected.');
+  }
+}
+
+// ── Create account ──
+async function createAccount() {
+  if (!selectedTemplate) { showOnboardingError('Please select a template first.'); return; }
+  if (!window._echoProvider) { showOnboardingError('Please connect a wallet first.'); return; }
+
+  const btn = document.getElementById('create-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Creating…';
+  hideOnboardingError();
+
+  try {
+    const accounts = await (window._echoProvider).request({ method: 'eth_requestAccounts' });
+    const owner = accounts[0];
+
+    // 1. Ask Gateway to generate a key (dry run — just get the keyHash for registration)
+    // We use a placeholder instanceId derived from owner + timestamp
+    // Real instanceId comes from the on-chain event after createAccount() is called.
+    // For MVP: generate key first, use keyHash in registration, then confirm on-chain.
+
+    const templateId = gatewayConfig.templates[selectedTemplate];
+
+    // 2. Build createAccount calldata
+    // EchoAccountFactory.createAccount(InstanceRegistration r, bytes32 salt)
+    const FACTORY_ABI = [{
+      name: 'createAccount',
+      type: 'function',
+      inputs: [
+        { name: 'r', type: 'tuple', components: [
+          { name: 'owner',             type: 'address'   },
+          { name: 'templateId',        type: 'bytes32'   },
+          { name: 'executeKeyHash',    type: 'bytes32'   },
+          { name: 'initialTokens',     type: 'address[]' },
+          { name: 'maxPerOps',         type: 'uint256[]' },
+          { name: 'maxPerDays',        type: 'uint256[]' },
+          { name: 'targets',           type: 'address[]' },
+          { name: 'selectors',         type: 'bytes4[]'  },
+          { name: 'explorationBudget', type: 'uint256'   },
+          { name: 'explorationPerTx',  type: 'uint256'   },
+          { name: 'globalMaxPerDay',   type: 'uint256'   },
+          { name: 'globalTotalBudget', type: 'uint256'   },
+          { name: 'expiry',            type: 'uint64'    },
+        ]},
+        { name: 'salt', type: 'bytes32' },
+      ],
+      outputs: [{ name: 'account', type: 'address' }],
+    }];
+
+    // Template defaults (USDC 6 decimals)
+    // Sepolia USDC: https://sepolia.etherscan.io/token/0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8
+    const SEPOLIA_USDC = '0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8';
+    // Uniswap V3 selectors (must match IntentRegistry)
+    const SEL_EXACT_INPUT  = '0x414bf389';
+    const SEL_EXACT_OUTPUT = '0x4aa4a4fa';
+
+    // Values match Deploy.s.sol createTemplate() calls exactly
+    const TEMPLATES = {
+      conservative: {
+        explorationBudget: 20000000n,    // $20 exploration budget
+        explorationPerTx:  5000000n,     // $5 per exploration tx
+        globalMaxPerDay:   400000000n,   // $400 global daily cap
+        globalTotal:       2000000000n,  // $2,000 total budget
+        tokenLimits: [{ token: SEPOLIA_USDC, perOp: 50000000n, perDay: 200000000n }],
+        targets:   [gatewayConfig.contracts.uniswapV3Router],
+        selectors: [SEL_EXACT_INPUT, SEL_EXACT_OUTPUT],
+      },
+      standard: {
+        explorationBudget: 50000000n,    // $50
+        explorationPerTx:  10000000n,    // $10
+        globalMaxPerDay:   1000000000n,  // $1,000
+        globalTotal:       5000000000n,  // $5,000
+        tokenLimits: [{ token: SEPOLIA_USDC, perOp: 100000000n, perDay: 500000000n }],
+        targets:   [gatewayConfig.contracts.uniswapV3Router],
+        selectors: [SEL_EXACT_INPUT, SEL_EXACT_OUTPUT],
+      },
+      active: {
+        explorationBudget: 100000000n,   // $100
+        explorationPerTx:  25000000n,    // $25
+        globalMaxPerDay:   4000000000n,  // $4,000
+        globalTotal:       20000000000n, // $20,000
+        tokenLimits: [{ token: SEPOLIA_USDC, perOp: 500000000n, perDay: 2000000000n }],
+        targets:   [gatewayConfig.contracts.uniswapV3Router],
+        selectors: [SEL_EXACT_INPUT, SEL_EXACT_OUTPUT],
+      },
+    };
+
+    const tpl   = TEMPLATES[selectedTemplate];
+    const salt  = '0x' + Date.now().toString(16).padStart(64, '0');
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 90 * 24 * 3600); // 90 days
+
+    // Placeholder keyHash — will be replaced with real one from Gateway after deploy
+    // For now we use a dummy; user will need to call /api/register-key after tx confirms
+    const DUMMY_KEY_HASH = '0x' + '00'.repeat(31) + '01';
+
+    const regParams = {
+      owner,
+      templateId,
+      executeKeyHash:    DUMMY_KEY_HASH,
+      initialTokens:     tpl.tokenLimits.map(t => t.token),
+      maxPerOps:         tpl.tokenLimits.map(t => t.perOp),
+      maxPerDays:        tpl.tokenLimits.map(t => t.perDay),
+      targets:           tpl.targets,
+      selectors:         tpl.selectors,
+      explorationBudget: tpl.explorationBudget,
+      explorationPerTx:  tpl.explorationPerTx,
+      globalMaxPerDay:   tpl.globalMaxPerDay,
+      globalTotalBudget: tpl.globalTotal,
+      expiry,
+    };
+
+    // Encode using ethers.js ABI
+    const iface = new ethers.Interface(FACTORY_ABI);
+    const calldata = iface.encodeFunctionData('createAccount', [regParams, salt]);
+
+    document.getElementById('step3-num').className = 'step-num active';
+    showOnboardingInfo('Please confirm the transaction in MetaMask…');
+
+    const txHash = await (window._echoProvider).request({
+      method: 'eth_sendTransaction',
+      params: [{ from: owner, to: gatewayConfig.contracts.echoAccountFactory, data: calldata }],
+    });
+
+    showOnboardingInfo(`Transaction submitted: ${txHash.slice(0,10)}… — waiting for confirmation`);
+
+    // Poll for receipt
+    await waitForTx(txHash);
+
+    // Get the deployed account address from factory
+    const accountAddress = await getAccountAddress(owner, salt);
+
+    document.getElementById('step3-num').className = 'step-num done';
+    document.getElementById('step4-num').className = 'step-num active';
+
+    // Derive instanceId: keccak256(abi.encodePacked(owner, nonce))
+    // We read it from the InstanceRegistered event instead
+    const instanceId = await getInstanceId(txHash);
+
+    // Register key with Gateway
+    const keyRes = await fetch('/api/register-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instanceId, accountAddress, label: selectedTemplate }),
+    }).then(r => r.json());
+
+    if (keyRes.error) throw new Error(keyRes.error);
+
+    document.getElementById('step4-num').className = 'step-num done';
+    showOnboardingInfo('✓ Account created and signing key registered! Redirecting…');
+
+    setTimeout(() => { window.location.reload(); }, 1500);
+
+  } catch (err) {
+    showOnboardingError(err.message ?? String(err));
+    const btn = document.getElementById('create-btn');
+    btn.disabled = false;
+    btn.textContent = 'Create Account';
+  }
+}
+
+async function waitForTx(txHash) {
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 3000));
+    const receipt = await (window._echoProvider).request({
+      method: 'eth_getTransactionReceipt',
+      params: [txHash],
+    });
+    if (receipt) return receipt;
+  }
+  throw new Error('Transaction not confirmed after 90s');
+}
+
+async function getAccountAddress(owner, salt) {
+  // Call EchoAccountFactory.getAddress(owner, salt)
+  const GET_ADDRESS_ABI = ['function getAddress(address userWallet, bytes32 salt) view returns (address)'];
+  const iface  = new ethers.Interface(GET_ADDRESS_ABI);
+  const data   = iface.encodeFunctionData('getAddress', [owner, salt]);
+  const result = await (window._echoProvider).request({
+    method: 'eth_call',
+    params: [{ to: gatewayConfig.contracts.echoAccountFactory, data }, 'latest'],
+  });
+  return iface.decodeFunctionResult('getAddress', result)[0];
+}
+
+async function getInstanceId(txHash) {
+  // Read InstanceRegistered event from tx receipt logs
+  // topic0 = keccak256("InstanceRegistered(bytes32,address,bytes32)")
+  const INSTANCE_REGISTERED_TOPIC = '0x' + 'a'.repeat(64); // placeholder — replace with real topic
+  const receipt = await (window._echoProvider).request({ method: 'eth_getTransactionReceipt', params: [txHash] });
+  // instanceId is topic[1] of InstanceRegistered event
+  const log = receipt?.logs?.find(l =>
+    l.address?.toLowerCase() === gatewayConfig.contracts.policyRegistry.toLowerCase()
+  );
+  return log?.topics?.[1] ?? null;
+}
+
+async function pauseInstance() {
+  const instanceId = document.getElementById('pause-btn').dataset.instanceId;
+  const res = await fetch('/api/policy/pause', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instanceId }),
+  }).then(r => r.json());
+  if (res.pendingTx) {
+    // Method A: user signs via MetaMask
+    await (window._echoProvider).request({
+      method: 'eth_sendTransaction',
+      params: [{ from: await getConnectedAccount(), to: res.pendingTx.to, data: res.pendingTx.calldata }],
+    });
+    showDashboardInfo('Pause transaction submitted. Refreshing…');
+    setTimeout(() => refreshPolicy(), 5000);
+  }
+}
+
+async function refreshPolicy() {
+  const keysRes = await fetch('/api/keys').then(r => r.json());
+  if (keysRes.keys?.length > 0) {
+    const key = keysRes.keys[0];
+    document.getElementById('dashboard').classList.add('hidden');
+    await loadPolicy(key.instanceId, key.accountAddress);
+  }
+}
+
+async function getConnectedAccount() {
+  const accounts = await (window._echoProvider).request({ method: 'eth_accounts' });
+  return accounts[0];
+}
+
+function showOnboardingError(msg) {
+  const el = document.getElementById('onboarding-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  document.getElementById('onboarding-success').classList.add('hidden');
+}
+function showOnboardingInfo(msg) {
+  const el = document.getElementById('onboarding-success');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  document.getElementById('onboarding-error').classList.add('hidden');
+}
+function hideOnboardingError() {
+  document.getElementById('onboarding-error').classList.add('hidden');
+  document.getElementById('onboarding-success').classList.add('hidden');
+}
+function showDashboardInfo(msg) {
+  const el = document.getElementById('dashboard-error');
+  el.className = 'alert alert-info';
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+// Init on load
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sessions — Echo Gateway</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:      #0a0a0a; --surface: #111111; --border: #1e1e1e;
+      --muted:   #333333; --text:    #e8e8e8; --subtle: #666666;
+      --accent:  #00ff87; --warn:    #ff6b35; --danger: #ff3b3b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-weight: 300; min-height: 100vh; }
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+    nav { border-bottom: 1px solid var(--border); padding: 0 2rem; height: 52px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: var(--bg); z-index: 10; }
+    .nav-logo { font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.1em; color: var(--accent); }
+    .nav-links { display: flex; gap: 2rem; }
+    .nav-links a { font-size: 12px; letter-spacing: 0.08em; text-decoration: none; color: var(--subtle); text-transform: uppercase; transition: color 0.15s; }
+    .nav-links a:hover, .nav-links a.active { color: var(--text); }
+    main { max-width: 1000px; margin: 0 auto; padding: 3rem 2rem; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 2px; padding: 1.5rem; }
+    .pill { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 11px; font-family: 'IBM Plex Mono', monospace; padding: 2px 8px; border-radius: 2px; letter-spacing: 0.05em; }
+    .pill-green { background: rgba(0,255,135,0.08); color: var(--accent); border: 1px solid rgba(0,255,135,0.2); }
+    .pill-red   { background: rgba(255,59,59,0.08);  color: var(--danger); border: 1px solid rgba(255,59,59,0.2); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .progress-track { height: 3px; background: var(--muted); border-radius: 1px; overflow: hidden; }
+    .progress-fill  { height: 100%; background: var(--accent); border-radius: 1px; transition: width 0.5s; }
+    .progress-fill.warn   { background: var(--warn); }
+    .progress-fill.danger { background: var(--danger); }
+    .btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 8px 16px; font-size: 12px; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.08em; border: none; cursor: pointer; border-radius: 2px; transition: all 0.15s; text-decoration: none; }
+    .btn-primary { background: var(--accent); color: #000; font-weight: 500; }
+    .btn-primary:hover { background: #00cc6e; }
+    .btn-ghost  { background: transparent; color: var(--subtle); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--muted); color: var(--text); }
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(255,59,59,0.3); }
+    .btn-danger:hover { background: rgba(255,59,59,0.08); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    input, select { background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 8px 12px; border-radius: 2px; width: 100%; outline: none; transition: border-color 0.15s; }
+    input:focus, select:focus { border-color: var(--accent); }
+    label { display: block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--subtle); margin-bottom: 6px; }
+    h2 { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--subtle); margin-bottom: 1rem; font-weight: 400; }
+    .stat-key { font-size: 11px; color: var(--subtle); }
+    .stat-val  { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .alert { padding: 12px 16px; border-radius: 2px; font-size: 12px; border-left: 3px solid; }
+    .alert-error { background: rgba(255,59,59,0.05); border-color: var(--danger); color: var(--danger); }
+    .alert-info  { background: rgba(0,255,135,0.05); border-color: var(--accent); color: var(--accent); }
+    .spinner { width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+    .fade-in { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .session-card { background: var(--surface); border: 1px solid var(--border); border-radius: 2px; padding: 1.25rem; margin-bottom: 0.75rem; }
+    .session-card:hover { border-color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-logo">ECHO //</span>
+  <div class="nav-links">
+    <a href="/">Policy</a>
+    <a href="/sessions" class="active">Sessions</a>
+  </div>
+  <div id="wallet-status-wrap" style="position:relative">
+    <div id="wallet-status"
+      style="font-size:11px; font-family:'IBM Plex Mono',monospace; color:var(--subtle); cursor:default"
+      onclick="toggleWalletMenu()">
+      not connected
+    </div>
+    <div id="wallet-menu" style="
+      display:none; position:absolute; right:0; top:calc(100% + 8px);
+      background:#111; border:1px solid #1e1e1e; border-radius:2px;
+      min-width:160px; z-index:50; overflow:hidden;
+    ">
+      <div style="padding:8px 12px; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#444; border-bottom:1px solid #1e1e1e">Wallet</div>
+      <div id="wallet-menu-addr" style="padding:8px 12px; font-size:11px; color:#666; font-family:'IBM Plex Mono',monospace; word-break:break-all; border-bottom:1px solid #1e1e1e"></div>
+      <button onclick="disconnectWallet()" style="display:block; width:100%; text-align:left; padding:8px 12px; background:transparent; border:none; cursor:pointer; font-size:11px; font-family:'IBM Plex Mono',monospace; color:#ff6b35; letter-spacing:0.05em;" onmouseover="this.style.background='rgba(255,107,53,0.08)'" onmouseout="this.style.background='transparent'">Disconnect</button>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem">
+    <div>
+      <div style="font-size:22px; font-weight:300; margin-bottom:0.25rem">Sessions</div>
+      <div style="font-size:12px; color:var(--subtle)">Autonomous execution policies</div>
+    </div>
+    <button class="btn btn-primary" onclick="showCreateForm()">+ New Session</button>
+  </div>
+
+  <!-- Create session form -->
+  <div id="create-form" class="card hidden fade-in" style="margin-bottom:2rem">
+    <h2>New Session</h2>
+    <div class="grid-2" style="gap:1rem; margin-bottom:1rem">
+      <div>
+        <label>Token In</label>
+        <select id="f-tokenIn">
+          <option value="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48">USDC</option>
+          <option value="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2">WETH</option>
+        </select>
+      </div>
+      <div>
+        <label>Token Out</label>
+        <select id="f-tokenOut">
+          <option value="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2">WETH</option>
+          <option value="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48">USDC</option>
+        </select>
+      </div>
+      <div>
+        <label>Max amount per op (USDC)</label>
+        <input type="number" id="f-maxPerOp" placeholder="50" min="1" />
+      </div>
+      <div>
+        <label>Total budget (USDC)</label>
+        <input type="number" id="f-totalBudget" placeholder="350" min="1" />
+      </div>
+      <div>
+        <label>Max ops per day</label>
+        <input type="number" id="f-maxOpsPerDay" placeholder="2" min="1" max="100" />
+      </div>
+      <div>
+        <label>Expiry (days from now)</label>
+        <input type="number" id="f-expiry" placeholder="30" min="1" max="365" />
+      </div>
+    </div>
+    <div style="display:flex; gap:0.75rem">
+      <button class="btn btn-primary" id="create-session-btn" onclick="createSession()">Create Session</button>
+      <button class="btn btn-ghost" onclick="hideCreateForm()">Cancel</button>
+    </div>
+    <div id="create-error" class="alert alert-error hidden" style="margin-top:1rem"></div>
+    <div id="create-info"  class="alert alert-info  hidden" style="margin-top:1rem"></div>
+  </div>
+
+  <!-- Sessions list -->
+  <div id="sessions-loading" style="text-align:center; padding:3rem; color:var(--subtle); font-size:13px">
+    <div class="spinner" style="margin:0 auto 1rem"></div>
+    Loading sessions…
+  </div>
+
+  <div id="sessions-list" class="hidden"></div>
+  <div id="sessions-empty" class="hidden" style="color:var(--subtle); font-size:13px; padding:2rem 0; text-align:center">
+    No active sessions. Create one to enable autonomous agent execution.
+  </div>
+  <div id="sessions-error" class="alert alert-error hidden"></div>
+
+  <!-- Pending tx notice (method A) -->
+  <div id="pending-tx" class="card hidden fade-in" style="margin-top:1.5rem">
+    <h2>Pending transaction</h2>
+    <p style="font-size:12px; color:var(--subtle); margin-bottom:1rem; line-height:1.6">
+      Sign and submit this transaction in MetaMask to complete the action.
+    </p>
+    <div id="pending-tx-details" style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--subtle); word-break:break-all; margin-bottom:1rem; line-height:1.6"></div>
+    <button class="btn btn-primary" id="sign-tx-btn">Sign in MetaMask</button>
+  </div>
+</main>
+
+<script>
+const TOKEN_SYMBOLS = {
+  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 'USDC',
+  '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 'WETH',
+};
+function tokenSymbol(addr) {
+  return TOKEN_SYMBOLS[addr?.toLowerCase()] ?? addr?.slice(0,6)+'…'+addr?.slice(-4);
+}
+function fmtUsdc(raw) {
+  return '$' + (Number(raw) / 1e6).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+function progressClass(pct) {
+  if (pct >= 90) return 'danger';
+  if (pct >= 70) return 'warn';
+  return '';
+}
+
+let instanceId    = null;
+let gatewayConfig = null;
+let pendingTxData = null;
+
+// EIP-6963: detect installed wallets
+const detectedWallets = new Map();
+window.addEventListener('eip6963:announceProvider', (e) => {
+  detectedWallets.set(e.detail.info.rdns, e.detail);
+});
+window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+let walletMenuOpen = false;
+function toggleWalletMenu() {
+  if (!window._echoProvider) return;
+  walletMenuOpen = !walletMenuOpen;
+  document.getElementById('wallet-menu').style.display = walletMenuOpen ? 'block' : 'none';
+}
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('wallet-status-wrap')?.contains(e.target)) {
+    document.getElementById('wallet-menu').style.display = 'none';
+    walletMenuOpen = false;
+  }
+});
+function disconnectWallet() {
+  window._echoProvider = null;
+  document.getElementById('wallet-status').textContent = 'not connected';
+  document.getElementById('wallet-status').style.color = 'var(--subtle)';
+  document.getElementById('wallet-menu').style.display = 'none';
+  document.getElementById('wallet-menu-addr').textContent = '';
+  walletMenuOpen = false;
+}
+
+async function init() {
+  try {
+    gatewayConfig = await fetch('/api/config').then(r => r.json());
+    const keysRes = await fetch('/api/keys').then(r => r.json());
+
+    if (!keysRes.keys?.length) {
+      document.getElementById('sessions-loading').classList.add('hidden');
+      document.getElementById('sessions-error').textContent = 'No Echo account found. Set up your account first.';
+      document.getElementById('sessions-error').classList.remove('hidden');
+      return;
+    }
+
+    instanceId = keysRes.keys[0].instanceId;
+    const accountAddress = keysRes.keys[0].accountAddress;
+    if (accountAddress) {
+      document.getElementById('wallet-status').textContent =
+        accountAddress.slice(0,6) + '…' + accountAddress.slice(-4);
+      document.getElementById('wallet-status').style.color = 'var(--accent)';
+      document.getElementById('wallet-status').style.cursor = 'pointer';
+      document.getElementById('wallet-menu-addr').textContent = accountAddress;
+    }
+
+    await loadSessions();
+  } catch (err) {
+    document.getElementById('sessions-loading').classList.add('hidden');
+    document.getElementById('sessions-error').textContent = `Gateway error: ${err.message}`;
+    document.getElementById('sessions-error').classList.remove('hidden');
+  }
+}
+
+async function loadSessions() {
+  document.getElementById('sessions-loading').classList.remove('hidden');
+  document.getElementById('sessions-list').classList.add('hidden');
+
+  try {
+    // List session keys from keystore
+    const keysRes = await fetch('/api/keys').then(r => r.json());
+    // Note: currently only execute keys are listed; session keys would need separate endpoint
+    // For MVP, sessions are fetched by sessionId stored in keystore labels
+
+    document.getElementById('sessions-loading').classList.add('hidden');
+    document.getElementById('sessions-empty').classList.remove('hidden');
+
+  } catch (err) {
+    document.getElementById('sessions-loading').classList.add('hidden');
+    document.getElementById('sessions-error').textContent = err.message;
+    document.getElementById('sessions-error').classList.remove('hidden');
+  }
+}
+
+function showCreateForm() {
+  document.getElementById('create-form').classList.remove('hidden');
+}
+function hideCreateForm() {
+  document.getElementById('create-form').classList.add('hidden');
+  document.getElementById('create-error').classList.add('hidden');
+  document.getElementById('create-info').classList.add('hidden');
+}
+
+async function createSession() {
+  const tokenIn      = document.getElementById('f-tokenIn').value;
+  const tokenOut     = document.getElementById('f-tokenOut').value;
+  const maxPerOp     = Number(document.getElementById('f-maxPerOp').value);
+  const totalBudget  = Number(document.getElementById('f-totalBudget').value);
+  const maxOpsPerDay = Number(document.getElementById('f-maxOpsPerDay').value);
+  const expiryDays   = Number(document.getElementById('f-expiry').value);
+
+  if (!maxPerOp || !totalBudget || !maxOpsPerDay || !expiryDays) {
+    showCreateError('All fields are required.');
+    return;
+  }
+  if (tokenIn === tokenOut) {
+    showCreateError('tokenIn and tokenOut must be different.');
+    return;
+  }
+
+  const btn = document.getElementById('create-session-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Creating…';
+
+  try {
+    const sessionExpiry = Math.floor(Date.now() / 1000) + expiryDays * 86400;
+
+    const res = await fetch('/api/sessions/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instanceId,
+        tokenIn,
+        tokenOut,
+        maxAmountPerOp: String(maxPerOp * 1e6),
+        totalBudget:    String(totalBudget * 1e6),
+        maxOpsPerDay,
+        sessionExpiry,
+      }),
+    }).then(r => r.json());
+
+    if (res.error) throw new Error(res.error);
+
+    // Show pending tx for user to sign (method A)
+    pendingTxData = res.pendingTx;
+    document.getElementById('pending-tx-details').innerHTML =
+      `To: ${res.pendingTx.to}<br>Chain: Sepolia (${res.pendingTx.chainId})<br>Session key registered in Gateway KeyStore.`;
+
+    document.getElementById('pending-tx').classList.remove('hidden');
+    document.getElementById('sign-tx-btn').onclick = signPendingTx;
+    showCreateInfo('Session key generated. Sign the transaction to activate on-chain.');
+
+  } catch (err) {
+    showCreateError(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Session';
+  }
+}
+
+async function signPendingTx() {
+  if (!pendingTxData) return;
+  try {
+    const provider = window._echoProvider ?? window.ethereum;
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    const from = accounts[0];
+
+    const txHash = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [{ from, to: pendingTxData.to, data: pendingTxData.calldata }],
+    });
+
+    document.getElementById('pending-tx').classList.add('hidden');
+    showCreateInfo(`✓ Transaction submitted: ${txHash.slice(0,10)}… — session will be active after confirmation.`);
+    setTimeout(() => { hideCreateForm(); loadSessions(); }, 3000);
+  } catch (err) {
+    showCreateError(`Transaction failed: ${err.message}`);
+  }
+}
+
+async function revokeSession(sessionId) {
+  if (!confirm('Revoke this session? The agent will no longer be able to execute it.')) return;
+  try {
+    const res = await fetch('/api/sessions/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    }).then(r => r.json());
+
+    if (res.error) throw new Error(res.error);
+
+    pendingTxData = res.pendingTx;
+    document.getElementById('pending-tx-details').textContent =
+      `Revoke session ${sessionId.slice(0,10)}…`;
+    document.getElementById('pending-tx').classList.remove('hidden');
+    document.getElementById('sign-tx-btn').onclick = signPendingTx;
+  } catch (err) {
+    document.getElementById('sessions-error').textContent = err.message;
+    document.getElementById('sessions-error').classList.remove('hidden');
+  }
+}
+
+function showCreateError(msg) {
+  const el = document.getElementById('create-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  document.getElementById('create-info').classList.add('hidden');
+}
+function showCreateInfo(msg) {
+  const el = document.getElementById('create-info');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  document.getElementById('create-error').classList.add('hidden');
+}
+
+init();
+</script>
+</body>
+</html>
