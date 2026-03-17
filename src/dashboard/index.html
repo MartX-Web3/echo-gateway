@@ -305,8 +305,9 @@
   </div>
 
   <!-- ONBOARDING -->
-  <div id="page-onboarding" class="hidden" style="display:flex;flex-direction:column;min-height:100%;overflow-y:auto">
-    <div class="page-header" style="flex-shrink:0">
+  <div id="page-onboarding" class="hidden" style="display:flex;flex-direction:column;align-items:center;min-height:100vh;overflow-y:auto">
+    <div style="width:100%;max-width:640px;padding:32px 32px 48px;flex-shrink:0">
+    <div class="page-header" style="padding:0 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px">
       <div>
         <div class="page-title">Set up Echo</div>
         <div class="page-subtitle">Create your on-chain smart account with enforced spending limits</div>
@@ -321,7 +322,7 @@
       <div id="ob-progress-bar" style="height:100%;background:var(--accent);transition:width .3s ease;width:25%"></div>
     </div>
 
-    <div class="page-content fade-in" style="max-width:640px;flex:1">
+    <div class="fade-in" style="width:100%">
 
       <!-- STEP 1: Connect wallet -->
       <div id="ob-panel-1">
@@ -500,9 +501,9 @@
       </div>
 
     </div>
+    </div><!-- /max-width wrapper -->
   </div>
 
-  <!-- CONNECT WALLET -->
   <!-- CONNECT WALLET -->
   <div id="page-connect" class="hidden" style="display:flex;align-items:center;justify-content:center;flex:1">
     <div style="text-align:center;max-width:360px;padding:2rem">
