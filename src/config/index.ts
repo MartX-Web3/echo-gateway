@@ -90,7 +90,7 @@ export function loadConfig(): GatewayConfig {
       join(homedir(), '.echo', 'keystore.json'),
     ),
 
-    port: parseInt(optional('GATEWAY_PORT', '3000'), 10),
+    port: parseInt(optional('GATEWAY_PORT', '18790'), 10),
     host: optional('GATEWAY_HOST', '127.0.0.1'),
   };
 }
