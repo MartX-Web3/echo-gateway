@@ -227,6 +227,18 @@ export class KeyStore {
   }
 
   /**
+   * Update the label on an existing key (without changing the raw key).
+   * Used to migrate legacy accounts to the new label format.
+   */
+  async rotateLabel(id: string, newLabel: string): Promise<void> {
+    this._assertUnlocked();
+    const stored = this._findKey(id);
+    if (!stored) throw new Error(`KeyStore: key not found for id="${id}"`);
+    stored.label = newLabel;
+    await this._flush();
+  }
+
+  /**
    * Check if a key exists for a given id.
    */
   hasKey(id: string): boolean {

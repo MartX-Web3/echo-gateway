@@ -36,12 +36,9 @@ export class HttpServer {
     const dashboardDir = join(__dirname, '..', 'dashboard');
     this.app.use('/assets', express.static(join(dashboardDir, 'assets')));
 
-    // Dashboard pages
+    // Dashboard SPA — all routes serve index.html
     this.app.get('/', (_req: Request, res: Response) => {
       res.sendFile(join(dashboardDir, 'index.html'));
-    });
-    this.app.get('/sessions', (_req: Request, res: Response) => {
-      res.sendFile(join(dashboardDir, 'sessions.html'));
     });
 
     // API routes
