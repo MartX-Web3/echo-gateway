@@ -308,18 +308,58 @@ export class UserOpBuilder {
    * Convert PackedUserOp to the JSON format Pimlico's RPC expects.
    * All BigInt fields must be hex strings.
    */
-  private _opToRpcFormat(op: PackedUserOp): Record<string, string> {
-    return {
-      sender:             op.sender,
-      nonce:              op.nonce,
-      initCode:           op.initCode,
-      callData:           op.callData,
-      accountGasLimits:   op.accountGasLimits,
-      preVerificationGas: op.preVerificationGas,
-      gasFees:            op.gasFees,
-      paymasterAndData:   op.paymasterAndData,
-      signature:          op.signature,
+  private _opToRpcFormat(op: PackedUserOp): Record<string, unknown> {
+    // Pimlico expects unpacked v0.7 fields (not the on-chain packed format)
+    // Unpack accountGasLimits → verificationGasLimit + callGasLimit
+    // Unpack gasFees → maxPriorityFeePerGas + maxFeePerGas
+    // initCode → factory + factoryData (empty = no deployment)
+    const [verificationGasLimit, callGasLimit] = this._unpackUint128x2(op.accountGasLimits);
+    const [maxPriorityFeePerGas, maxFeePerGas] = this._unpackUint128x2(op.gasFees);
+    const [paymaster, paymasterData] = this._unpackPaymaster(op.paymasterAndData);
+
+    const result: Record<string, unknown> = {
+      sender:                op.sender,
+      nonce:                 op.nonce,
+      callData:              op.callData,
+      callGasLimit:          toHex(callGasLimit),
+      verificationGasLimit:  toHex(verificationGasLimit),
+      preVerificationGas:    op.preVerificationGas,
+      maxFeePerGas:          toHex(maxFeePerGas),
+      maxPriorityFeePerGas:  toHex(maxPriorityFeePerGas),
+      signature:             op.signature,
     };
+
+    // Only include paymaster fields if there's a paymaster
+    if (paymaster && paymaster !== '0x0000000000000000000000000000000000000000') {
+      result.paymaster                    = paymaster;
+      result.paymasterData                = paymasterData;
+      result.paymasterVerificationGasLimit = toHex(100_000n);
+      result.paymasterPostOpGasLimit       = toHex(50_000n);
+    }
+
+    // Only include factory if initCode is non-empty
+    if (op.initCode && op.initCode !== '0x') {
+      result.factory     = ('0x' + op.initCode.slice(2, 42)) as Hex;
+      result.factoryData = ('0x' + op.initCode.slice(42)) as Hex;
+    }
+
+    return result;
+  }
+
+  private _unpackUint128x2(packed: Hex): [bigint, bigint] {
+    const n = hexToBigInt(packed);
+    const high = n >> 128n;
+    const low  = n & ((1n << 128n) - 1n);
+    return [high, low];
+  }
+
+  private _unpackPaymaster(paymasterAndData: Hex): [string, Hex] {
+    if (!paymasterAndData || paymasterAndData === '0x' || paymasterAndData.length < 42) {
+      return ['0x0000000000000000000000000000000000000000', '0x'];
+    }
+    const paymaster    = '0x' + paymasterAndData.slice(2, 42);
+    const paymasterData = ('0x' + paymasterAndData.slice(42)) as Hex;
+    return [paymaster, paymasterData];
   }
 
   /**

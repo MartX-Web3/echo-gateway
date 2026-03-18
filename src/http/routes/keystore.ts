@@ -75,6 +75,47 @@ export function registerKeystoreRoutes(router: Router, keyStore: KeyStore): void
     }
   });
 
+  // GET /api/context — returns the currently active account (set by Dashboard on wallet connect)
+  router.get('/context', (_req: Request, res: Response) => {
+    try {
+      const keys = keyStore.listKeys('execute');
+      if (!keys.length) { res.json({ active: null }); return; }
+      // Return first key's context — in multi-account scenario this is the last-set active
+      const active = keys[0]!;
+      res.json({
+        active: {
+          instanceId:     active.id,
+          accountAddress: active.label.match(/account:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
+          ownerAddress:   active.label.match(/owner:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
+          name:           active.label.split('|')[0] ?? active.label,
+          keyHash:        active.keyHash,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // POST /api/context — Dashboard calls this when user connects wallet and account loads
+  router.post('/context', async (req: Request, res: Response) => {
+    try {
+      const { instanceId } = req.body as { instanceId: string };
+      if (!instanceId) { res.status(400).json({ error: 'instanceId required' }); return; }
+      // Verify key exists
+      const meta = keyStore.getKeyMeta(instanceId);
+      if (!meta) { res.status(404).json({ error: 'instanceId not found in KeyStore' }); return; }
+      // Store as active context in a simple file next to keystore
+      const { writeFileSync, mkdirSync } = await import('node:fs');
+      const { dirname } = await import('node:path');
+      const ctxPath = keyStore['path'].replace('keystore.json', 'context.json');
+      mkdirSync(dirname(ctxPath), { recursive: true });
+      writeFileSync(ctxPath, JSON.stringify({ activeInstanceId: instanceId, updatedAt: Date.now() }));
+      res.json({ ok: true, instanceId });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // PATCH /api/keys/:instanceId — update ownerAddress and/or name on existing key
   // Used to migrate legacy accounts that don't have ownerAddress stored
   router.patch('/keys/:instanceId', async (req: Request, res: Response) => {

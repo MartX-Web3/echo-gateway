@@ -40,7 +40,7 @@ const TAG_LEN          = 16; // bytes — AES-GCM auth tag
 // ── KeyStore class ─────────────────────────────────────────────────────────
 
 export class KeyStore {
-  private readonly path: string;
+  readonly path: string;  // exposed for context.json storage
   private encKey: Buffer | null = null;
   private store: KeyStoreFile | null = null;
   private writeLock = false;

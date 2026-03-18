@@ -242,9 +242,15 @@
 
   <!-- PROTOCOLS -->
   <div id="page-protocols" class="hidden">
-    <div class="page-header"><div><div class="page-title">Protocols</div><div class="page-subtitle">Authorize DeFi protocols your agent can interact with</div></div></div>
+    <div class="page-header">
+      <div><div class="page-title">Protocols</div><div class="page-subtitle">Authorize DeFi protocols your agent can interact with</div></div>
+      <button class="btn btn-primary btn-sm" onclick="openModal('modal-add-protocol')">+ Add Protocol</button>
+    </div>
     <div class="page-content fade-in">
-      <div class="alert alert-info mb-24" style="font-size:12px">Authorized protocols are added to <span class="mono">allowedTargets</span> on-chain. Your agent can only call authorized protocols — all others are blocked by EchoPolicyValidator.</div>
+      <div class="alert alert-info mb-24" style="font-size:12px">
+        Authorized protocols are added to <span class="mono">allowedTargets</span> on-chain.
+        Your agent can <strong>only</strong> call authorized protocols — all others are blocked by EchoPolicyValidator.
+      </div>
       <div class="grid-2" id="protocols-grid"></div>
     </div>
   </div>
@@ -609,6 +615,12 @@ async function loadAccountForWallet(eoaAddr){
   const pol=await fetch('/api/policy/'+currentKey.instanceId).then(r=>r.json());
   if(!pol.error)currentPolicy=pol;
   setAccountStatus(currentKey.accountAddress,eoaAddr);
+  // Tell Gateway which account is active — agents use this to resolve instanceId
+  fetch('/api/context',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({instanceId:currentKey.instanceId}),
+  }).catch(()=>{});
   navigate('overview');
 }
 function setWalletDisplay(addr,walletName){
@@ -783,20 +795,135 @@ function toggleEditMode(){
   else{btn.textContent='✎ Edit';btn.classList.add('btn-secondary');btn.classList.remove('btn-primary')}
 }
 
-const PROTOCOL_REGISTRY=[{id:'uniswap-v3',name:'Uniswap V3',icon:'🦄',desc:'Automated market maker. Supports exactInputSingle and exactOutputSingle swaps on Sepolia.',selectors:['0x414bf389','0x4aa4a4fa'],labels:['exactInputSingle','exactOutputSingle'],category:'DEX'}];
+// Built-in known protocols — always shown regardless of allowedTargets
+const PROTOCOL_REGISTRY=[
+  {id:'uniswap-v3',name:'Uniswap V3',icon:'🦄',
+   desc:'Automated market maker. exactInputSingle and exactOutputSingle.',
+   selectors:['0x414bf389','0x4aa4a4fa'],labels:['exactInputSingle','exactOutputSingle'],
+   address:null},
+  {id:'mock-router',name:'Mock SwapRouter (Sepolia)',icon:'🧪',
+   desc:'Mock swap router for testnet. Fixed rate: 1 WETH = 2000 USDC.',
+   selectors:['0x414bf389','0x4aa4a4fa'],labels:['exactInputSingle','exactOutputSingle'],
+   address:'0xC2756f9b4e5f0aF14BBB61537299235B073A3b91'},
+];
+
 async function loadProtocols(){
   if(!currentPolicy||!gatewayConfig)return;
   PROTOCOL_REGISTRY[0].address=gatewayConfig.contracts.uniswapV3Router;
+
   const authorized=(currentPolicy.allowedTargets??[]).map(a=>a.toLowerCase());
-  document.getElementById('protocols-grid').innerHTML=PROTOCOL_REGISTRY.map(p=>{
+
+  // Merge registry + any on-chain authorized addresses not in registry
+  const registryAddrs=new Set(PROTOCOL_REGISTRY.map(p=>p.address?.toLowerCase()).filter(Boolean));
+  const unknownAuthorized=authorized.filter(a=>!registryAddrs.has(a));
+
+  const allCards=[
+    ...PROTOCOL_REGISTRY.map(p=>({...p,known:true})),
+    ...unknownAuthorized.map(a=>({
+      id:'custom-'+a, name:'Custom Protocol', icon:'⚙', known:false,
+      desc:'Manually authorized protocol.',
+      selectors:[], labels:[], address:a,
+    })),
+  ];
+
+  document.getElementById('protocols-grid').innerHTML=allCards.map(p=>{
     const auth=authorized.includes(p.address?.toLowerCase());
-    return`<div class="protocol-card ${auth?'authorized':''}"><div class="flex items-center" style="gap:12px"><div class="protocol-icon">${p.icon}</div><div><div style="font-size:14px">${p.name}</div><span class="pill ${auth?'pill-green':'pill-gray'}" style="margin-top:4px">${auth?'<span class="dot"></span> Authorized':'Not authorized'}</span></div></div><div style="font-size:11px;color:var(--subtle);line-height:1.5">${p.desc}</div><div class="addr">${p.address?.slice(0,10)}…${p.address?.slice(-6)}</div><div style="font-size:10px;color:var(--subtle)">Selectors: ${p.labels.join(', ')}</div><div>${auth?`<button class="btn btn-danger btn-sm" onclick="revokeProtocol('${p.address}')">Remove Authorization</button>`:`<button class="btn btn-primary btn-sm" onclick="authorizeProtocol('${p.id}')">Authorize</button>`}</div></div>`;
+    return`
+      <div class="protocol-card ${auth?'authorized':''}">
+        <div class="flex items-center" style="gap:12px">
+          <div class="protocol-icon">${p.icon}</div>
+          <div>
+            <div style="font-size:14px">${p.name}</div>
+            <span class="pill ${auth?'pill-green':'pill-gray'}" style="margin-top:4px">
+              ${auth?'<span class="dot"></span> Authorized':'Not authorized'}
+            </span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--subtle);line-height:1.5">${p.desc}</div>
+        <div class="addr">${p.address?.slice(0,10)}…${p.address?.slice(-6)}</div>
+        ${p.labels.length?`<div style="font-size:10px;color:var(--subtle)">Selectors: ${p.labels.join(', ')}</div>`:''}
+        <div style="margin-top:4px">
+          ${auth
+            ?`<button class="btn btn-danger btn-sm" onclick="revokeProtocol('${p.address}')">Remove Authorization</button>`
+            :`<button class="btn btn-primary btn-sm" onclick="authorizeKnownProtocol('${p.id}','${p.address}','${p.selectors.join(',')}')">Authorize</button>`
+          }
+        </div>
+      </div>`;
   }).join('');
+
+  // Populate modal presets with unregistered known protocols
+  const presetsEl=document.getElementById('ap-presets');
+  if(presetsEl){
+    const unauth=PROTOCOL_REGISTRY.filter(p=>p.address&&!authorized.includes(p.address.toLowerCase()));
+    if(unauth.length){
+      presetsEl.innerHTML=unauth.map(p=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)">
+          <span style="font-size:18px">${p.icon}</span>
+          <div style="flex:1">
+            <div style="font-size:13px">${p.name}</div>
+            <div class="addr" style="margin-top:2px">${p.address?.slice(0,10)}…${p.address?.slice(-6)}</div>
+          </div>
+          <button class="btn btn-primary btn-sm"
+            onclick="authorizeKnownProtocol('${p.id}','${p.address}','${p.selectors.join(',')}');closeModal('modal-add-protocol')">
+            Authorize
+          </button>
+        </div>`).join('');
+    }else{
+      presetsEl.innerHTML='<div style="font-size:12px;color:var(--subtle)">All known protocols already authorized.</div>';
+    }
+  }
 }
-async function authorizeProtocol(id){
-  const p=PROTOCOL_REGISTRY.find(x=>x.id===id);if(!p)return;
-  await sendPolicyTx({functionName:'addAllowedTarget',args:[currentKey.instanceId,p.address,p.selectors],desc:`Authorize ${p.name}`,onSuccess:async()=>{await refreshPolicy();loadProtocols()}});
+
+async function authorizeKnownProtocol(id, address, selectorsStr){
+  if(!window._echoProvider){ showWalletPicker(); return; }
+  if(!currentKey){ alert('No Echo account loaded.'); return; }
+  // selectorsStr is "0x414bf389,0x4aa4a4fa" — split into array
+  const selectors = typeof selectorsStr === 'string'
+    ? selectorsStr.split(',').map(s=>s.trim()).filter(Boolean)
+    : selectorsStr;
+  await sendPolicyTx({
+    functionName: 'addAllowedTarget',
+    args: [currentKey.instanceId, address, selectors],
+    desc: 'Authorize ' + id + ' (' + address.slice(0,10) + '…)',
+    onSuccess: async () => { await refreshPolicy(); loadProtocols(); },
+  });
 }
+
+function apValidate(){
+  const addr=document.getElementById('ap-address')?.value?.trim();
+  const btn=document.getElementById('ap-submit-btn');
+  if(btn)btn.disabled=!(addr&&addr.startsWith('0x')&&addr.length===42);
+}
+
+async function addCustomProtocol(){
+  if(!requireWallet('ap-result'))return;
+  const name    =document.getElementById('ap-name')?.value?.trim()||'Custom Protocol';
+  const address =document.getElementById('ap-address')?.value?.trim();
+  const selRaw  =document.getElementById('ap-selectors')?.value?.trim()||'';
+  const selectors=selRaw.split(',').map(s=>s.trim()).filter(s=>s.startsWith('0x')&&s.length===10);
+
+  if(!address||!address.startsWith('0x')||address.length!==42){
+    showResult('ap-result','Invalid address.','error');return;
+  }
+  if(!selectors.length){
+    showResult('ap-result','Enter at least one valid selector (e.g. 0x414bf389).','error');return;
+  }
+
+  await sendPolicyTx({
+    functionName:'addAllowedTarget',
+    args:[currentKey.instanceId,address,selectors],
+    desc:'Authorize '+name+' ('+address.slice(0,10)+'…)',
+    resultEl:'ap-result',
+    onSuccess:async()=>{
+      closeModal('modal-add-protocol');
+      document.getElementById('ap-name').value='';
+      document.getElementById('ap-address').value='';
+      document.getElementById('ap-selectors').value='';
+      await refreshPolicy();loadProtocols();
+    },
+  });
+}
+
 async function revokeProtocol(address){
   if(!confirm('Remove this protocol? Your agent will no longer be able to use it.'))return;
   await sendPolicyTx({functionName:'removeAllowedTarget',args:[currentKey.instanceId,address],desc:'Remove protocol authorization',onSuccess:async()=>{await refreshPolicy();loadProtocols()}});
@@ -1069,6 +1196,15 @@ function requireWallet(resultEl){
   showWalletPicker();
   return false;
 }
+const POLICY_ABI=[
+  'function setTokenLimit(bytes32,address,uint256,uint256)',
+  'function setExplorationBudget(bytes32,uint256,uint256)',
+  'function setGlobalMaxPerDay(bytes32,uint256)',
+  'function addAllowedTarget(bytes32,address,bytes4[])',
+  'function removeAllowedTarget(bytes32,address)',
+  'function pauseInstance(bytes32)',
+  'function unpauseInstance(bytes32)',
+];
 async function sendPolicyTx({functionName,args,desc,resultEl,onSuccess}){
   const iface=new ethers.Interface(POLICY_ABI);
   openPendingTx({to:gatewayConfig.contracts.policyRegistry,calldata:iface.encodeFunctionData(functionName,args),desc,onSuccess,resultEl});
@@ -1145,5 +1281,58 @@ function toggleTheme(){
 initTheme();
 init();
 </script>
+<!-- Add Protocol Modal -->
+<div class="modal-overlay" id="modal-add-protocol">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <div class="modal-title">Add Protocol</div>
+      <button class="modal-close" onclick="closeModal('modal-add-protocol')">×</button>
+    </div>
+
+    <!-- Known presets -->
+    <div id="ap-presets-wrap" style="margin-bottom:16px">
+      <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--subtle);margin-bottom:8px">Known protocols</div>
+      <div style="display:flex;flex-direction:column;gap:6px" id="ap-presets">
+        <div style="font-size:12px;color:var(--subtle)">All known protocols are already authorized.</div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <span style="font-size:10px;color:var(--subtle);letter-spacing:.08em">CUSTOM PROTOCOL</span>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+
+    <!-- Custom entry -->
+    <div class="field">
+      <label>Name <span style="color:var(--subtle);font-weight:300">(optional)</span></label>
+      <input type="text" id="ap-name" placeholder="e.g. MockSwapRouter" />
+    </div>
+    <div class="field">
+      <label>Contract address</label>
+      <input type="text" id="ap-address" placeholder="0x…" oninput="apValidate()"
+        style="font-family:'IBM Plex Mono',monospace;font-size:12px" />
+      <div class="field-hint">Must be a valid 0x… Ethereum address (42 characters)</div>
+    </div>
+    <div class="field">
+      <label>Allowed selectors</label>
+      <input type="text" id="ap-selectors" placeholder="0x414bf389,0x4aa4a4fa"
+        style="font-family:'IBM Plex Mono',monospace;font-size:12px" />
+      <div class="field-hint">
+        Comma-separated bytes4 function selectors the agent may call.
+        For Uniswap-compatible routers use <span class="mono" style="font-size:10px">0x414bf389,0x4aa4a4fa</span>
+        (exactInputSingle, exactOutputSingle).
+        Find selectors on Etherscan → Contract → Write.
+      </div>
+    </div>
+
+    <div id="ap-result" class="hidden mb-16"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" id="ap-submit-btn" onclick="addCustomProtocol()" disabled>Authorize on-chain</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-protocol')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

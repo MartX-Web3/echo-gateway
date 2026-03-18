@@ -121,6 +121,7 @@ export class McpServer {
 
   private async _dispatch(name: string, args: Record<string, unknown>): Promise<unknown> {
     switch (name) {
+      case 'echo_get_context':      return this._getContext();
       case 'echo_submit_intent':    return this._submitIntent(args as unknown as SubmitIntentInput);
       case 'echo_create_session':   return this._createSession(args as unknown as CreateSessionInput);
       case 'echo_execute_session':  return this._executeSession(args as unknown as ExecuteSessionInput);
@@ -135,6 +136,7 @@ export class McpServer {
   // ── MCP-01: echo_submit_intent ─────────────────────────────────────────
 
   private async _submitIntent(input: SubmitIntentInput): Promise<SubmitIntentOutput> {
+    input = { ...input, instanceId: this._resolveInstanceId(input.instanceId) as typeof input.instanceId };
     const intent = {
       tokenIn:   input.tokenIn,
       tokenOut:  input.tokenOut,
@@ -187,6 +189,7 @@ export class McpServer {
   // ── MCP-02: echo_create_session ────────────────────────────────────────
 
   private async _createSession(input: CreateSessionInput): Promise<CreateSessionOutput> {
+    input = { ...input, instanceId: this._resolveInstanceId(input.instanceId) as typeof input.instanceId };
     // Generate session key and store it
     const { keyHash: sessionKeyHash } = await this.keyStore.addKey(
       `session-pending-${Date.now()}`,
@@ -227,6 +230,7 @@ export class McpServer {
   // ── MCP-03: echo_execute_session ───────────────────────────────────────
 
   private async _executeSession(input: ExecuteSessionInput): Promise<ExecuteSessionOutput> {
+    input = { ...input, instanceId: this._resolveInstanceId(input.instanceId) as typeof input.instanceId };
     // Read session to get tokenIn/tokenOut
     const sess = await this.client.readContract({
       address:      this.config.contracts.policyRegistry,
@@ -283,6 +287,7 @@ export class McpServer {
   // ── MCP-04: echo_list_sessions ─────────────────────────────────────────
 
   private async _listSessions(input: ListSessionsInput): Promise<ListSessionsOutput> {
+    input = { ...input, instanceId: this._resolveInstanceId(input.instanceId) as typeof input.instanceId };
     // Get all session keys from keystore that belong to this instance
     const sessionKeys = this.keyStore.listKeys('session');
 
@@ -344,6 +349,7 @@ export class McpServer {
   // ── MCP-06: echo_get_policy ────────────────────────────────────────────
 
   private async _getPolicy(input: GetPolicyInput): Promise<GetPolicyOutput> {
+    input = { ...input, instanceId: this._resolveInstanceId(input.instanceId) as typeof input.instanceId };
     const [inst, instFull] = await Promise.all([
       this.client.readContract({
         address:      this.config.contracts.policyRegistry,
@@ -394,6 +400,7 @@ export class McpServer {
   // ── MCP-07: echo_pause_instance ────────────────────────────────────────
 
   private async _pauseInstance(input: PauseInstanceInput): Promise<PauseInstanceOutput> {
+    input = { ...input, instanceId: this._resolveInstanceId(input.instanceId) as typeof input.instanceId };
     const calldata = encodeFunctionData({
       abi:          POLICY_REGISTRY_ABI,
       functionName: 'pauseInstance',
@@ -422,6 +429,48 @@ export class McpServer {
    * TODO: EchoAccountFactory emits AccountCreated(account, owner, instanceId).
    * Index this event to get the account address deterministically.
    */
+  // ── MCP-00: echo_get_context ──────────────────────────────────────────
+  private _getContext() {
+    try {
+      const instanceId = this._resolveInstanceId();
+      const keys = this.keyStore.listKeys('execute');
+      const key = keys.find(k => k.id === instanceId) ?? keys[0];
+      const label = key?.label ?? '';
+      return {
+        instanceId,
+        accountAddress: label.match(/account:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
+        ownerAddress:   label.match(/owner:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
+        name:           label.split('|')[0] ?? 'My Account',
+        network:        'sepolia',
+        chainId:        this.config.chainId,
+        policyRegistry: this.config.contracts.policyRegistry,
+      };
+    } catch (err) {
+      return { error: true, reason: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  private _resolveInstanceId(instanceId?: string): Hex {
+    if (instanceId && instanceId.length === 66) return instanceId as Hex;
+    // Read active context set by Dashboard on wallet connect
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // @ts-ignore
+      const fs = (() => { try { return require('node:fs'); } catch { return null; } })() as typeof import('node:fs') | null;
+      if (!fs) throw new Error('no fs');
+      const ctxPath = (this.keyStore as unknown as { path: string }).path
+        .replace('keystore.json', 'context.json');
+      const ctx = JSON.parse(fs.readFileSync(ctxPath, 'utf8')) as { activeInstanceId: string };
+      if (ctx.activeInstanceId) return ctx.activeInstanceId as Hex;
+    } catch { /* context.json not found, fall through */ }
+    // Fallback: first registered key
+    const keys = this.keyStore.listKeys('execute');
+    if (keys.length === 0) throw new Error(
+      'No Echo Account found. Open http://127.0.0.1:18790 and connect your wallet.'
+    );
+    return keys[0]!.id as Hex;
+  }
+
   private async _getAccountAddress(instanceId: Hex): Promise<Address> {
     const meta = this.keyStore.getKeyMeta(instanceId);
     if (!meta) {
@@ -480,6 +529,14 @@ export class McpServer {
 
 const TOOL_DEFINITIONS = [
   {
+    name:        'echo_get_context',
+    description:
+      'Get the current active Echo account context — instanceId, accountAddress, owner wallet, and name. ' +
+      'ALWAYS call this first before any other echo_ tool. ' +
+      'Never ask the user for instanceId — retrieve it automatically with this tool.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
     name:        'echo_submit_intent',
     description:
       'Execute a swap immediately using the real-time mode Execute Key. ' +
@@ -496,7 +553,7 @@ const TOOL_DEFINITIONS = [
         slippageBps:  { type: 'number', description: 'Slippage tolerance in basis points (default 50 = 0.5%)' },
         feeTier:      { type: 'number', enum: [500, 3000, 10000], description: 'Uniswap V3 fee tier (auto-detected if omitted)' },
       },
-      required: ['instanceId', 'tokenIn', 'tokenOut', 'amount', 'direction'],
+      required: ['tokenIn', 'tokenOut', 'amount', 'direction'],
     },
   },
   {
@@ -516,7 +573,7 @@ const TOOL_DEFINITIONS = [
         maxOpsPerDay:   { type: 'number' },
         sessionExpiry:  { type: 'number', description: 'Unix timestamp (seconds)' },
       },
-      required: ['instanceId', 'tokenIn', 'tokenOut', 'maxAmountPerOp', 'totalBudget', 'maxOpsPerDay', 'sessionExpiry'],
+      required: ['tokenIn', 'tokenOut', 'maxAmountPerOp', 'totalBudget', 'maxOpsPerDay', 'sessionExpiry'],
     },
   },
   {
@@ -533,7 +590,7 @@ const TOOL_DEFINITIONS = [
         amount:      { type: 'string' },
         slippageBps: { type: 'number' },
       },
-      required: ['instanceId', 'sessionId', 'amount'],
+      required: ['sessionId', 'amount'],
     },
   },
   {
@@ -544,7 +601,7 @@ const TOOL_DEFINITIONS = [
       properties: {
         instanceId: { type: 'string' },
       },
-      required: ['instanceId'],
+      required: [],
     },
   },
   {
@@ -570,7 +627,7 @@ const TOOL_DEFINITIONS = [
       properties: {
         instanceId: { type: 'string' },
       },
-      required: ['instanceId'],
+      required: [],
     },
   },
   {
@@ -584,7 +641,7 @@ const TOOL_DEFINITIONS = [
       properties: {
         instanceId: { type: 'string' },
       },
-      required: ['instanceId'],
+      required: [],
     },
   },
 ] as const;
