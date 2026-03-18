@@ -14,12 +14,14 @@ import express, { type Request, type Response } from 'express';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import type { KeyStore } from '../keystore/KeyStore.js';
 import type { GatewayConfig } from '../config/index.js';
 import { registerPolicyRoutes }   from './routes/policy.js';
 import { registerSessionRoutes }  from './routes/sessions.js';
 import { registerKeystoreRoutes } from './routes/keystore.js';
 import { registerRpcProxyRoutes } from './routes/rpcProxy.js';
+import { registerSettingsRoutes } from './routes/settings.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -48,6 +50,7 @@ export class HttpServer {
     registerPolicyRoutes(api, config);
     registerSessionRoutes(api, config);
     registerKeystoreRoutes(api, keyStore);
+    registerSettingsRoutes(api, config);
     this.app.use('/api', api);
 
     // Config endpoint — exposes non-sensitive config to Dashboard JS
@@ -57,6 +60,25 @@ export class HttpServer {
         contracts:  config.contracts,
         templates:  config.templates,
       });
+    });
+
+    // MCP setup endpoint — provides local paths so the browser can generate
+    // a stdio MCP config without needing dist to include .env contents.
+    this.app.get('/api/mcp-setup', (_req: Request, res: Response) => {
+      try {
+        // HttpServer runtime path is: <root>/dist/http
+        const gatewayRoot = join(__dirname, '..', '..');
+        const envFilePath = join(gatewayRoot, '.env');
+        const distIndexPath = join(gatewayRoot, 'dist', 'index.js');
+
+        res.json({
+          envFilePath,
+          envFileExists: existsSync(envFilePath),
+          distIndexPath,
+        });
+      } catch (err) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
     });
   }
 

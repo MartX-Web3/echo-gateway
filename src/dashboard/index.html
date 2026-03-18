@@ -330,6 +330,32 @@
         <div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--subtle)">Network</span><span class="pill pill-blue">Sepolia Testnet</span></div>
         <div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--subtle)">PolicyRegistry</span><span class="addr" id="set-registry-addr">—</span></div>
         <div class="flex justify-between items-center" style="padding:8px 0"><span style="font-size:12px;color:var(--subtle)">EchoAccountFactory</span><span class="addr" id="set-factory-addr">—</span></div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <div class="field" style="margin-bottom:12px">
+            <label>SEPOLIA_RPC_URL</label>
+            <input type="text" id="set-sepolia-rpc-url" placeholder="https://…" style="font-size:12px;font-family:'IBM Plex Mono',monospace" />
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>PIMLICO_API_KEY</label>
+            <input type="password" id="set-pimlico-api-key" placeholder="••••••••" style="font-size:12px;font-family:'IBM Plex Mono',monospace" />
+            <div class="field-hint" id="set-pimlico-api-key-hint">—</div>
+          </div>
+          <div class="grid-2" style="gap:12px">
+            <div class="field" style="margin-bottom:0">
+              <label>CHAIN_ID</label>
+              <input type="number" id="set-chain-id" placeholder="11155111" min="1" style="font-size:12px;font-family:'IBM Plex Mono',monospace" />
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>GATEWAY_PORT</label>
+              <input type="number" id="set-gateway-port" placeholder="18790" min="1" max="65535" style="font-size:12px;font-family:'IBM Plex Mono',monospace" />
+            </div>
+          </div>
+          <div class="flex gap-8" style="margin-top:16px">
+            <button class="btn btn-primary btn-sm" onclick="saveNetworkSettings()">Save</button>
+            <button class="btn btn-ghost btn-sm" onclick="renderSettings()">Reset</button>
+          </div>
+          <div id="settings-save-result" class="alert alert-info hidden mt-16" style="font-size:12px"></div>
+        </div>
       </div>
       <div class="section-header mb-16"><div class="section-title">MCP Setup</div></div>
       <div class="card mb-24">
@@ -1182,6 +1208,18 @@ function renderSettings(){
   if(!gatewayConfig)return;
   document.getElementById('set-registry-addr').textContent=gatewayConfig.contracts.policyRegistry?.slice(0,10)+'…';
   document.getElementById('set-factory-addr').textContent=gatewayConfig.contracts.echoAccountFactory?.slice(0,10)+'…';
+  // Load editable env vars (limited to allowlist)
+  fetch('/api/settings').then(r=>r.json()).then(s=>{
+    document.getElementById('set-sepolia-rpc-url').value=s?.sepoliaRpcUrl??'';
+    document.getElementById('set-chain-id').value=s?.chainId??'';
+    document.getElementById('set-gateway-port').value=s?.gatewayPort??'';
+    // Never prefill secrets into the UI. We only show whether it's configured.
+    document.getElementById('set-pimlico-api-key').value='';
+    document.getElementById('set-pimlico-api-key-hint').textContent=s?.pimlicoApiKeyPresent?'Configured':'Not configured';
+    document.getElementById('settings-save-result')?.classList.add('hidden');
+  }).catch(()=>{
+    document.getElementById('settings-save-result')?.classList.add('hidden');
+  });
   fetch('/api/keys').then(r=>r.json()).then(d=>{
     document.getElementById('set-key-count').textContent=d.keys?.length??0;
     // Show migration notice for legacy accounts (no ownerAddress)
@@ -1201,8 +1239,61 @@ function renderSettings(){
   // Detect WSL path dynamically from window.location or use placeholder
   const snippet=document.getElementById('mcp-config-snippet');
   if(snippet){
-    const cfg={mcpServers:{echo:{command:'wsl',args:['--','bash','-c','cd /home/user/echo-gateway && node --env-file=.env dist/index.js'],env:{ECHO_KEYSTORE_PASSPHRASE:'<your-passphrase>'}}}};
-    snippet.textContent=JSON.stringify(cfg,null,2);
+    // Auto-generate a stdio MCP config for Claude Desktop / Cursor.
+    // It uses `node --env-file=<abs path>` so we don't need to copy `.env` into `dist/`.
+    fetch('/api/mcp-setup').then(r=>r.json()).then(s=>{
+      const envFilePath=s.envFilePath||'.env';
+      const distIndexPath=s.distIndexPath||'dist/index.js';
+      const isWindows=/Windows/i.test(navigator.userAgent);
+
+      const cfg={
+        mcpServers:{
+          echo:{
+            type:'stdio',
+            command:isWindows?'wsl':'node',
+            args:isWindows
+              ?['--','node','--env-file',envFilePath,distIndexPath]
+              :['--env-file',envFilePath,distIndexPath],
+            // We intentionally do not inline env values here (they may contain secrets).
+            // `--env-file` loads them for the MCP process.
+            env:{},
+          }
+        }
+      };
+      snippet.textContent=JSON.stringify(cfg,null,2);
+    }).catch(()=>{
+      snippet.textContent=JSON.stringify({error:'Failed to load /api/mcp-setup'} ,null,2);
+    });
+  }
+}
+
+async function saveNetworkSettings(){
+  const sepoliaRpcUrl=document.getElementById('set-sepolia-rpc-url')?.value?.trim();
+  const pimlicoApiKey=document.getElementById('set-pimlico-api-key')?.value?.trim();
+  const chainId=document.getElementById('set-chain-id')?.value;
+  const gatewayPort=document.getElementById('set-gateway-port')?.value;
+  const resultEl=document.getElementById('settings-save-result');
+  if(!sepoliaRpcUrl){showResult('settings-save-result','SEPOLIA_RPC_URL is required.','error');return}
+  const chainIdNum=Number(chainId);
+  const portNum=Number(gatewayPort);
+  if(!Number.isInteger(chainIdNum)||chainIdNum<=0){showResult('settings-save-result','CHAIN_ID must be a positive integer.','error');return}
+  if(!Number.isInteger(portNum)||portNum<=0||portNum>=65536){showResult('settings-save-result','GATEWAY_PORT must be 1..65535.','error');return}
+
+  const body={
+    SEPOLIA_RPC_URL:sepoliaRpcUrl,
+    CHAIN_ID:chainIdNum,
+    GATEWAY_PORT:portNum,
+  };
+  if(pimlicoApiKey)body.PIMLICO_API_KEY=pimlicoApiKey;
+
+  try{
+    resultEl?.classList.add('hidden');
+    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok){showResult('settings-save-result',data.error||'Failed to save settings.','error');return}
+    showResult('settings-save-result','Saved. Please restart the gateway to apply changes.','info');
+  }catch(err){
+    showResult('settings-save-result',err.message||String(err),'error');
   }
 }
 
