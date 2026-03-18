@@ -19,6 +19,7 @@ import type { GatewayConfig } from '../config/index.js';
 import { registerPolicyRoutes }   from './routes/policy.js';
 import { registerSessionRoutes }  from './routes/sessions.js';
 import { registerKeystoreRoutes } from './routes/keystore.js';
+import { registerRpcProxyRoutes } from './routes/rpcProxy.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -43,6 +44,7 @@ export class HttpServer {
 
     // API routes
     const api = express.Router();
+    registerRpcProxyRoutes(api, config);
     registerPolicyRoutes(api, config);
     registerSessionRoutes(api, config);
     registerKeystoreRoutes(api, keyStore);

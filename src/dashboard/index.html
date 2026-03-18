@@ -1142,9 +1142,19 @@ async function loadActivity(){
   const tbody=document.getElementById('activity-table');
   tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--subtle);padding:20px"><span class="spinner"></span></td></tr>';
   try{
-    const provider=new ethers.JsonRpcProvider('https://rpc.sepolia.org');
+    const rpcUrl=new URL('/api/rpc',window.location.href).toString();
+    const provider=new ethers.JsonRpcProvider(rpcUrl);
     const iface=new ethers.Interface(['event PolicySpendUpdated(bytes32 indexed instanceId,bytes32 indexed sessionId,address tokenOut,uint256 amountIn,bool isExploration)']);
-    const logs=await provider.getLogs({address:gatewayConfig.contracts.policyRegistry,topics:[iface.getEvent('PolicySpendUpdated').topicHash,currentKey.instanceId],fromBlock:'earliest'});
+    // Free-tier public RPCs often restrict eth_getLogs block ranges.
+    // Query only the latest 10 blocks to stay within limits.
+    const latestBlock=await provider.getBlockNumber();
+    const fromBlock=Math.max(0,latestBlock-9);
+    const logs=await provider.getLogs({
+      address:gatewayConfig.contracts.policyRegistry,
+      topics:[iface.getEvent('PolicySpendUpdated').topicHash,currentKey.instanceId],
+      fromBlock,
+      toBlock:latestBlock,
+    });
     if(!logs.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--subtle);padding:30px">No activity yet</td></tr>';return}
     tbody.innerHTML=logs.slice().reverse().map(log=>{
       const{tokenOut,amountIn,isExploration,sessionId}=iface.parseLog(log).args;
