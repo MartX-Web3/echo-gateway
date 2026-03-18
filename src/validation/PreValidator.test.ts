@@ -40,9 +40,9 @@ function setupMock(): ReturnType<typeof vi.fn> {
 const REGISTRY   = '0x5A9C627774f4f02977CE9Fd7e4FEDe5AC281e938' as const;
 const INSTANCE   = ('0x' + 'ab'.repeat(32)) as `0x${string}`;
 const SESSION    = ('0x' + 'cd'.repeat(32)) as `0x${string}`;
-const USDC       = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const;
-const WETH       = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' as const;
-const ROUTER     = '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E' as const;
+const USDC       = '0x10A41D59249F0b143fe73d8583f112AF66375ea0' as const;
+const WETH       = '0x78f1422Df8c4631fd3ACe3c2E1b02df6d815e541' as const;
+const ROUTER     = '0x2e49DaB78491F0C82636401a59602661cdA51Bb5' as const;
 const ACCOUNT    = '0x1234567890123456789012345678901234567890' as const;
 const ATTACKER   = '0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead' as const;
 

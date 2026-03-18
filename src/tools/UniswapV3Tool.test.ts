@@ -20,10 +20,10 @@ import type { SwapIntent } from './types.js';
 
 // ── Addresses ──────────────────────────────────────────────────────────────
 
-const SWAP_ROUTER   = '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E' as const;
-const QUOTER_V2     = '0xEd1f6473345F45b75833fd55D191EF0c693F3c26' as const;
-const USDC          = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const;
-const WETH          = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' as const;
+const SWAP_ROUTER   = '0xC272Ce98e3a103297EB3A57E4f86902c0fdd2081' as const;
+const QUOTER_V2     = '0x2e49DaB78491F0C82636401a59602661cdA51Bb5' as const;
+const USDC          = '0x10A41D59249F0b143fe73d8583f112AF66375ea0' as const;
+const WETH          = '0x78f1422Df8c4631fd3ACe3c2E1b02df6d815e541' as const;
 const ACCOUNT       = '0x1234567890123456789012345678901234567890' as const;
 
 // ── Mock setup ─────────────────────────────────────────────────────────────

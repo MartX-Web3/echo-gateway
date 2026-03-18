@@ -55,7 +55,7 @@ function mockRpcError(code: number, message: string) {
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const ACCOUNT    = '0x1234567890123456789012345678901234567890' as const;
-const TARGET     = '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E' as const;
+const TARGET     = '0x2e49DaB78491F0C82636401a59602661cdA51Bb5' as const;
 const INNER_CD   = '0x414bf389' + 'ab'.repeat(228) as `0x${string}`; // fake exactInputSingle calldata
 const SIGNATURE  = ('0x01' + 'ab'.repeat(32)) as `0x${string}`;
 

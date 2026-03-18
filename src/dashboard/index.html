@@ -78,6 +78,10 @@
     .table tr:hover td{background:var(--surface2)}
     .mono{font-family:'IBM Plex Mono',monospace}
     .addr{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--subtle)}
+    .copyable-addr{display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none;border-radius:6px}
+    .copy-icon{font-size:11px;color:var(--subtle);opacity:.9}
+    .copyable-addr:hover{color:var(--text)}
+    .copyable-addr.copy-success{box-shadow:0 0 0 2px rgba(0,232,122,.25)}
     .pill{display:inline-flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;padding:2px 8px;border-radius:20px}
     .pill-green{background:rgba(0,232,122,.1);color:var(--accent)}
     .pill-red{background:rgba(255,64,64,.1);color:var(--danger)}
@@ -910,6 +914,19 @@ function saveRenameAccount(){
   renderSidebarAccountSwitcher();
 }
 function copySmartAddress(){const a=currentKey?.accountAddress;if(a)navigator.clipboard.writeText(a).catch(()=>{});closeFooterAccountMenu();}
+function copyToClipboard(text,btn){
+  if(!text)return;
+  const el=btn;
+  navigator.clipboard.writeText(text).then(()=>{
+    if(!el||!el.classList)return;
+    el.classList.add('copy-success');
+    setTimeout(()=>{el.classList.remove('copy-success')},1200);
+  }).catch(()=>{
+    if(!el||!el.classList)return;
+    el.classList.add('copy-success');
+    setTimeout(()=>{el.classList.remove('copy-success')},800);
+  });
+}
 function toggleFooterAccountMenu(){
   if(!currentKey)return;
   footerMenuOpen=!footerMenuOpen;
@@ -1014,7 +1031,7 @@ function renderPolicy(){
   if(p.tokenLimits?.length>0){
     tbody.innerHTML=p.tokenLimits.map(tl=>{
       const pct=Number(tl.maxPerDay)>0?Math.min(100,Math.round(Number(tl.dailySpent)/Number(tl.maxPerDay)*100)):0;
-      return`<tr><td><div style="font-size:13px">${tokenSymbol(tl.token)}</div><div class="addr">${tl.token.slice(0,10)}…${tl.token.slice(-6)}</div></td><td class="mono">${fmtUsd(tl.maxPerOp)}</td><td class="mono">${fmtUsd(tl.maxPerDay)}</td><td><div class="mono" style="font-size:12px">${fmtUsd(tl.dailySpent)}</div><div class="progress-track" style="margin-top:4px;width:80px"><div class="progress-fill ${pctClass(pct)}" style="width:${pct}%"></div></div></td><td class="edit-only hidden"><button class="btn btn-ghost btn-sm" onclick="openEditToken('${tl.token}','${tl.maxPerOp}','${tl.maxPerDay}')">Edit</button></td></tr>`;
+      return`<tr><td><div style="font-size:13px">${tokenSymbol(tl.token)}</div><div class="addr copyable-addr" style="margin-top:4px" onclick="copyToClipboard('${tl.token}',this)" title="Copy full token address">${tl.token.slice(0,10)}…${tl.token.slice(-6)}<span class="copy-icon" aria-hidden="true">⧉</span></div></td><td class="mono">${fmtUsd(tl.maxPerOp)}</td><td class="mono">${fmtUsd(tl.maxPerDay)}</td><td><div class="mono" style="font-size:12px">${fmtUsd(tl.dailySpent)}</div><div class="progress-track" style="margin-top:4px;width:80px"><div class="progress-fill ${pctClass(pct)}" style="width:${pct}%"></div></div></td><td class="edit-only hidden"><button class="btn btn-ghost btn-sm" onclick="openEditToken('${tl.token}','${tl.maxPerOp}','${tl.maxPerDay}')">Edit</button></td></tr>`;
     }).join('');
   }else{tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--subtle);padding:20px">No token limits — exploration mode only</td></tr>'}
   const pauseBtn=document.getElementById('pause-btn');
@@ -1038,7 +1055,7 @@ const PROTOCOL_REGISTRY=[
   {id:'mock-router',name:'Mock SwapRouter (Sepolia)',icon:'🧪',
    desc:'Mock swap router for testnet. Fixed rate: 1 WETH = 2000 USDC.',
    selectors:['0x414bf389','0x4aa4a4fa'],labels:['exactInputSingle','exactOutputSingle'],
-   address:'0xC2756f9b4e5f0aF14BBB61537299235B073A3b91'},
+   address:'0xC272Ce98e3a103297EB3A57E4f86902c0fdd2081'},
 ];
 
 async function loadProtocols(){
@@ -1074,7 +1091,7 @@ async function loadProtocols(){
           </div>
         </div>
         <div style="font-size:11px;color:var(--subtle);line-height:1.5">${p.desc}</div>
-        <div class="addr">${p.address?.slice(0,10)}…${p.address?.slice(-6)}</div>
+        <div class="addr copyable-addr" style="margin-top:2px" onclick="copyToClipboard('${p.address}',this)" title="Copy full protocol address">${p.address?.slice(0,10)}…${p.address?.slice(-6)}<span class="copy-icon" aria-hidden="true">⧉</span></div>
         ${p.labels.length?`<div style="font-size:10px;color:var(--subtle)">Selectors: ${p.labels.join(', ')}</div>`:''}
         <div style="margin-top:4px">
           ${auth
@@ -1095,7 +1112,7 @@ async function loadProtocols(){
           <span style="font-size:18px">${p.icon}</span>
           <div style="flex:1">
             <div style="font-size:13px">${p.name}</div>
-            <div class="addr" style="margin-top:2px">${p.address?.slice(0,10)}…${p.address?.slice(-6)}</div>
+            <div class="addr copyable-addr" style="margin-top:2px" onclick="copyToClipboard('${p.address}',this)" title="Copy full protocol address">${p.address?.slice(0,10)}…${p.address?.slice(-6)}<span class="copy-icon" aria-hidden="true">⧉</span></div>
           </div>
           <button class="btn btn-primary btn-sm"
             onclick="authorizeKnownProtocol('${p.id}','${p.address}','${p.selectors.join(',')}');closeModal('modal-add-protocol')">
@@ -1185,7 +1202,7 @@ async function loadActivity(){
     tbody.innerHTML=logs.slice().reverse().map(log=>{
       const{tokenOut,amountIn,isExploration,sessionId}=iface.parseLog(log).args;
       const sess=sessionId==='0x'+'00'.repeat(32)?'—':sessionId.slice(0,8)+'…';
-      return`<tr><td><span class="pill ${isExploration?'pill-orange':'pill-blue'}">${isExploration?'Exploration':'Session'}</span></td><td>${tokenSymbol(tokenOut)}</td><td class="mono">${fmtUsd(amountIn)}</td><td class="addr">${sess}</td><td style="color:var(--subtle);font-size:11px">${log.blockNumber}</td><td><a href="https://sepolia.etherscan.io/tx/${log.transactionHash}" target="_blank" style="color:var(--blue);font-size:11px">↗</a></td></tr>`;
+      return`<tr><td><span class="pill ${isExploration?'pill-orange':'pill-blue'}">${isExploration?'Exploration':'Session'}</span></td><td><span class="addr copyable-addr" style="font-size:13px" onclick="copyToClipboard('${tokenOut}',this)" title="Copy full token address">${tokenSymbol(tokenOut)}<span class="copy-icon" aria-hidden="true">⧉</span></span></td><td class="mono">${fmtUsd(amountIn)}</td><td class="addr">${sess}</td><td style="color:var(--subtle);font-size:11px">${log.blockNumber}</td><td><a href="https://sepolia.etherscan.io/tx/${log.transactionHash}" target="_blank" style="color:var(--blue);font-size:11px">↗</a></td></tr>`;
     }).join('');
   }catch(err){tbody.innerHTML=`<tr><td colspan="6" style="color:var(--danger);padding:20px">${err.message}</td></tr>`}
 }
