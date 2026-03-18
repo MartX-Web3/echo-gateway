@@ -120,6 +120,51 @@
     .flex{display:flex}.flex-col{flex-direction:column}
     .items-center{align-items:center}.justify-between{justify-content:space-between}
     .gap-8{gap:8px}.gap-12{gap:12px}
+    .account-switcher{border-bottom:1px solid var(--border);padding:12px 8px}
+    .account-switcher-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--subtle);padding:8px 12px 4px;font-weight:400}
+    .account-switcher-connect .btn{width:100%;justify-content:center}
+    .account-switcher-btn{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--subtle);transition:all .12s;width:100%;background:none;border:none;text-align:left;font-family:'IBM Plex Sans',sans-serif}
+    .account-switcher-btn:hover{background:var(--surface2);color:var(--text)}
+    .account-avatar{width:32px;height:32px;border-radius:999px;flex-shrink:0;object-fit:cover}
+    .account-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'IBM Plex Mono',monospace;font-size:12px}
+    .account-chevron{font-size:10px;color:var(--subtle);transition:transform .15s;flex-shrink:0}
+    .account-switcher-btn.open .account-chevron{transform:rotate(180deg)}
+    .account-dropdown{display:none;flex-direction:column;background:var(--surface2);border-radius:10px;border:1px solid var(--border);padding-top:4px;overflow:hidden;max-height:260px}
+    .account-dropdown.open{display:flex}
+    .account-dropdown-list{overflow-y:auto;max-height:220px;padding:4px 0;scrollbar-width:thin;scrollbar-color:var(--muted) transparent}
+    .account-dropdown-list::-webkit-scrollbar{width:8px}
+    .account-dropdown-list::-webkit-scrollbar-track{background:transparent;border-radius:999px}
+    .account-dropdown-list::-webkit-scrollbar-thumb{background:var(--muted);border-radius:999px;border:2px solid var(--surface2);background-clip:content-box}
+    .account-dropdown-list::-webkit-scrollbar-thumb:hover{background:var(--text)}
+    .account-section-label{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--subtle);padding:6px 12px 2px}
+    .account-section-label-muted{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--subtle);padding:6px 12px 2px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;width:100%;background:none;border:none;outline:none;border-radius:8px;transition:background .12s,color .12s}
+    .account-section-label-muted:hover{background:var(--surface);color:var(--text)}
+    .account-section-label-muted span{font-size:10px}
+    .account-section-label-muted .chev{font-size:11px;color:var(--subtle);transition:transform .15s;transform:rotate(0deg);flex-shrink:0}
+    .account-section-label-muted.open .chev{transform:rotate(90deg)}
+    .account-section-label-muted .count{color:var(--faint);font-size:10px}
+    .account-dropdown-item{position:relative;display:flex;align-items:center;gap:10px;padding:6px 12px;border-radius:0;cursor:pointer;font-size:12px;color:var(--subtle);transition:background .12s,color .12s}
+    .account-dropdown-item:hover{background:var(--surface);color:var(--text)}
+    .account-dropdown-item.active{background:rgba(0,232,122,.08);color:var(--accent)}
+    .account-dropdown-item-main{display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;padding:4px 0}
+    .account-dropdown-footer{border-top:1px solid var(--border);padding:8px 10px;margin-top:0}
+    .account-dropdown-footer .btn{width:100%;justify-content:center}
+    .account-dropdown-footer .btn.btn-ghost{background:var(--surface);border-color:var(--muted);color:var(--text)}
+    .account-dropdown-footer .btn.btn-ghost:hover{background:var(--muted);border-color:var(--faint);color:var(--text)}
+    .account-dropdown-item .account-item-actions{display:flex;margin-left:auto}
+    .account-item-actions button{background:none;border:none;cursor:pointer;padding:4px;border-radius:999px;color:var(--subtle);font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .12s,color .12s}
+    .account-item-actions button:hover{background:var(--muted);color:var(--text)}
+    .account-item-menu{position:absolute;right:10px;top:100%;margin-top:4px;min-width:160px;background:var(--surface);border-radius:10px;border:1px solid var(--border);padding:4px 0;z-index:60;display:none}
+    .account-item-menu.open{display:block}
+    .account-item-menu button{width:100%;text-align:left;background:none;border:none;padding:6px 12px;font-size:12px;color:var(--subtle);cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .12s,color .12s}
+    .account-item-menu button span.muted{font-size:11px;color:var(--faint)}
+    .account-item-menu button:hover{background:var(--surface2);color:var(--text)}
+    .account-footer-pill{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;cursor:pointer;transition:background .12s;position:relative}
+    .account-footer-pill:hover{background:var(--surface2)}
+    .account-footer-pill .wallet-addr{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--subtle);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .account-footer-chevron{font-size:10px;color:var(--subtle)}
+    .account-footer-menu{display:none;position:absolute;bottom:calc(100% + 8px);left:8px;right:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:hidden;z-index:50}
+    .account-footer-menu.open{display:block}
   </style>
 </head>
 <body>
@@ -138,6 +183,20 @@
       ☀
     </button>
   </div>
+  <div class="account-switcher">
+    <div class="account-switcher-label">Account</div>
+    <div id="account-switcher-connect" class="account-switcher-connect" style="display:none">
+      <button type="button" class="btn btn-ghost" onclick="navigate('onboarding')">+ Add account</button>
+    </div>
+    <div id="account-switcher-list" style="display:none">
+      <button type="button" class="account-switcher-btn" id="account-switcher-btn" onclick="toggleAccountDropdown()">
+        <img id="account-current-avatar" class="account-avatar" src="" alt="" />
+        <span id="account-current-name" class="account-name">—</span>
+        <span class="account-chevron">▼</span>
+      </button>
+      <div class="account-dropdown" id="account-dropdown"></div>
+    </div>
+  </div>
   <nav class="sidebar-nav">
     <div class="nav-label">Main</div>
     <a class="nav-item" data-page="overview" onclick="navigate('overview')"><span class="nav-icon">◈</span> Overview</a>
@@ -150,31 +209,14 @@
     <a class="nav-item" data-page="settings" onclick="navigate('settings')"><span class="nav-icon">⚙</span> Settings</a>
   </nav>
   <div class="sidebar-footer">
-    <!-- Connect wallet button (shown when no EOA connected) -->
-    <button id="sidebar-connect-btn"
-      onclick="showWalletPicker()"
-      class="btn btn-ghost"
-      style="width:100%;justify-content:flex-start;gap:8px;padding:8px 12px;border-radius:6px;font-size:12px;display:none">
-      <span style="width:7px;height:7px;border-radius:50%;background:var(--subtle);flex-shrink:0;display:inline-block"></span>
-      Connect wallet
-    </button>
-
-    <!-- Account status pill (shown when account loaded) -->
-    <div class="wallet-pill" id="wallet-pill" onclick="toggleWalletMenu()" style="display:none">
-      <div class="wallet-dot" id="wallet-dot"></div>
-      <div class="wallet-addr" id="wallet-addr">Echo Account</div>
-      <div class="wallet-menu" id="wallet-menu">
-        <div style="padding:8px 14px 4px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--subtle)">Echo Account</div>
+    <div class="account-footer-pill" id="account-footer-pill" onclick="toggleFooterAccountMenu()" style="display:none">
+      <span class="wallet-addr" id="wallet-addr">—</span>
+      <span class="account-footer-chevron">▼</span>
+      <div class="account-footer-menu" id="account-footer-menu">
+        <div style="padding:8px 14px 4px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--subtle)">Smart Account</div>
         <div style="padding:0 14px 8px;font-size:10px;color:var(--faint);font-family:'IBM Plex Mono',monospace;word-break:break-all;line-height:1.5" id="wallet-smart-addr"></div>
-        <div id="wallet-eoa-section" style="display:none">
-          <div class="wallet-menu-divider"></div>
-          <div style="padding:8px 14px 4px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--subtle)">Connected Wallet (EOA)</div>
-          <div id="wallet-full-addr" style="padding:0 14px 8px;font-size:10px;color:var(--subtle);font-family:'IBM Plex Mono',monospace;word-break:break-all;line-height:1.4"></div>
-        </div>
         <div class="wallet-menu-divider"></div>
-        <button class="wallet-menu-item" onclick="copySmartAddress()">Copy account address</button>
-        <button class="wallet-menu-item" id="wallet-connect-again-btn" onclick="closeMenu();showWalletPicker()">Connect wallet for signing</button>
-        <button class="wallet-menu-item danger" id="wallet-disconnect-btn" onclick="disconnectWallet()" style="display:none">Disconnect wallet</button>
+        <button type="button" class="wallet-menu-item" onclick="copySmartAddress();closeFooterAccountMenu()">Copy account address</button>
       </div>
     </div>
   </div>
@@ -376,7 +418,7 @@
       <div id="ob-panel-3" class="hidden">
         <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Configure policy</h2>
         <p style="font-size:12px;color:var(--subtle);margin-bottom:20px;line-height:1.7">
-          Set the spending limits for this account. Start with a template and customize each field.
+          Set the spending limits for this account. Start with a template and customize each field later.
         </p>
 
         <!-- Template picker -->
@@ -531,6 +573,7 @@
 </main>
 
 <!-- MODALS -->
+<div class="modal-overlay" id="modal-account-rename"><div class="modal" style="width:320px"><div class="modal-header"><div class="modal-title" id="modal-account-rename-title">Rename account</div><button class="modal-close" onclick="closeModal('modal-account-rename')">×</button></div><div class="field"><label>Account name</label><input type="text" id="modal-account-rename-input" maxlength="40" placeholder="e.g. Trading Bot, Research"/><div class="field-hint">Only stored locally in this browser.</div></div><div class="flex gap-8" style="margin-top:16px"><button class="btn btn-primary" onclick="saveRenameAccount()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-account-rename')">Cancel</button></div></div></div>
 <div class="modal-overlay" id="modal-wallet"><div class="modal" style="width:320px"><div class="modal-header"><div class="modal-title">Connect Wallet</div><button class="modal-close" onclick="closeModal('modal-wallet')">×</button></div><div id="modal-wallet-list" style="display:flex;flex-direction:column;gap:8px"></div></div></div>
 
 <div class="modal-overlay" id="modal-global"><div class="modal"><div class="modal-header"><div class="modal-title">Edit Daily Cap</div><button class="modal-close" onclick="closeModal('modal-global')">×</button></div><div class="field"><label>Global Daily Cap (USDC)</label><input type="number" id="mg-daily" placeholder="1000" min="1"/><div class="field-hint">Current: <span id="mg-daily-cur">—</span></div></div><div id="mg-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" onclick="saveGlobalDaily()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-global')">Cancel</button></div></div></div>
@@ -545,7 +588,8 @@
 
 <script>
 'use strict';
-let gatewayConfig=null,currentPolicy=null,currentKey=null,editMode=false,pendingTxQueue=null,walletMenuOpen=false;
+let gatewayConfig=null,currentPolicy=null,currentKey=null,editMode=false,pendingTxQueue=null,accountDropdownOpen=false,footerMenuOpen=false;
+let allKeysForCurrentWallet=[];
 const detectedWallets=new Map();
 window.addEventListener('eip6963:announceProvider',e=>detectedWallets.set(e.detail.info.rdns,e.detail));
 window.dispatchEvent(new Event('eip6963:requestProvider'));
@@ -561,8 +605,27 @@ const TOKENS={
 function tokenSymbol(a){return TOKENS[a?.toLowerCase()]?.symbol??a?.slice(0,6)+'…'+a?.slice(-4)}
 function fmtUsd(raw){return'$'+(Number(raw)/1e6).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function pctClass(p){return p>=90?'danger':p>=70?'warn':''}
+function getIdenticonDataUrl(address){
+  if(!address)return'';
+  const str=address.slice(2).toLowerCase();
+  const s=str.split('').reduce((a,c)=>(a*31+((c.charCodeAt(0)%256)|0))|0,0)>>>0;
+  const h=s%360;
+  const c1=`hsl(${h},58%,45%)`;
+  const c2=`hsl(${(h+137)%360},52%,40%)`;
+  const c3=`hsl(${(h+254)%360},48%,36%)`;
+  const canvas=document.createElement('canvas');canvas.width=32;canvas.height=32;
+  const ctx=canvas.getContext('2d');
+  for(let i=0;i<8;i++)for(let j=0;j<8;j++){
+    const idx=i*8+j;
+    const n=(s*(idx+1)+str.charCodeAt(idx%str.length))>>>0;
+    if(n%3===0)continue;
+    ctx.fillStyle=[c1,c2,c3][n%3];
+    ctx.fillRect(j*4,i*4,4,4);
+  }
+  return canvas.toDataURL('image/png');
+}
 
-const PAGES=['overview','policy','sessions','protocols','activity','settings','onboarding','connect','loading'];
+const PAGES=['overview','policy','sessions','protocols','activity','settings','onboarding','loading'];
 function navigate(page){
   PAGES.forEach(p=>{
     const el=document.getElementById('page-'+p);
@@ -572,7 +635,7 @@ function navigate(page){
   if(target){
     target.classList.remove('hidden');
     // pages that need specific display modes
-    if(page==='connect'||page==='loading') target.style.display='flex';
+    if(page==='loading') target.style.display='flex';
     if(page==='onboarding'){target.style.display='flex';target.style.flexDirection='column';}
   }
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
@@ -591,106 +654,264 @@ async function init(){
   try{
     gatewayConfig=await fetch('/api/config').then(r=>r.json());
     const keysRes=await fetch('/api/keys').then(r=>r.json());
-    setNoAccountStatus();
-    navigate(keysRes.keys?.length>0?'connect':'onboarding');
+    if(!keysRes.keys?.length){
+      setNoAccountStatus();
+      navigate('onboarding');
+      return;
+    }
+    await loadAllAccounts();
+    navigate('overview');
   }catch(err){document.getElementById('page-loading').innerHTML='<div class="alert alert-error" style="margin:2rem">'+err.message+'</div>'}
+}
+
+async function loadAllAccounts(){
+  const keysRes=await fetch('/api/keys').then(r=>r.json());
+  const keys=keysRes.keys||[];
+  if(!keys.length){navigate('onboarding');return}
+  allKeysForCurrentWallet=keys;
+  const lastId=localStorage.getItem('echo-selected-instance-id');
+  const preferred=keys.find(k=>k.instanceId===lastId);
+  currentKey=preferred||keys[0];
+  localStorage.setItem('echo-selected-instance-id',currentKey.instanceId);
+  const pol=await fetch('/api/policy/'+currentKey.instanceId).then(r=>r.json());
+  currentPolicy=pol.error?null:pol;
+  setAccountStatus();
+  renderSidebarAccountSwitcher();
+  fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instanceId:currentKey.instanceId})}).catch(()=>{});
+}
+
+function getAccountPrefs(){
+  try{return JSON.parse(localStorage.getItem('echo-account-prefs')||'{}')}catch{return{}}
+}
+function saveAccountPrefs(prefs){
+  localStorage.setItem('echo-account-prefs',JSON.stringify(prefs));
+}
+function updateAccountPrefs(instanceId,patch){
+  const prefs=getAccountPrefs();
+  prefs[instanceId]=Object.assign({},prefs[instanceId]||{},patch);
+  if('hidden'in patch&&patch.hidden){prefs[instanceId].pinned=false;}
+  saveAccountPrefs(prefs);
+}
+function getAccountMeta(instanceId){
+  const prefs=getAccountPrefs();
+  return prefs[instanceId]||{};
+}
+function accountDisplayName(key){
+  if(!key)return'Account';
+  const meta=getAccountMeta(key.instanceId);
+  if(meta.nameOverride)return meta.nameOverride;
+  return key.name||key.label?.split('|')[0]||('Account '+key.accountAddress?.slice(2,8));
 }
 
 async function loadAccountForWallet(eoaAddr){
   const keysRes=await fetch('/api/keys').then(r=>r.json());
   if(!keysRes.keys?.length){navigate('onboarding');return}
-
-  // Strict match: only show account if ownerAddress === connected EOA
   const eoaLower=eoaAddr.toLowerCase();
-  const matchedKey=keysRes.keys.find(k=>k.ownerAddress?.toLowerCase()===eoaLower)??null;
-
-  if(!matchedKey){
-    // This wallet has no Echo Account registered — must go through onboarding
-    currentKey=null;currentPolicy=null;
-    navigate('onboarding');
-    return;
-  }
-
-  currentKey=matchedKey;
+  const keysForWallet=(keysRes.keys||[]).filter(k=>k.ownerAddress?.toLowerCase()===eoaLower);
+  if(!keysForWallet.length){currentKey=null;currentPolicy=null;navigate('onboarding');return}
+  allKeysForCurrentWallet=keysForWallet;
+  const lastId=localStorage.getItem('echo-selected-instance-id');
+  const preferred=keysForWallet.find(k=>k.instanceId===lastId);
+  currentKey=preferred||keysForWallet[0];
+  localStorage.setItem('echo-selected-instance-id',currentKey.instanceId);
   const pol=await fetch('/api/policy/'+currentKey.instanceId).then(r=>r.json());
-  if(!pol.error)currentPolicy=pol;
-  setAccountStatus(currentKey.accountAddress,eoaAddr);
-  // Tell Gateway which account is active — agents use this to resolve instanceId
-  fetch('/api/context',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({instanceId:currentKey.instanceId}),
-  }).catch(()=>{});
+  currentPolicy=pol.error?null:pol;
+  setAccountStatus();
+  renderSidebarAccountSwitcher();
+  fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instanceId:currentKey.instanceId})}).catch(()=>{});
   navigate('overview');
 }
 function setWalletDisplay(addr,walletName){
   if(!addr)return;
-  document.getElementById('wallet-dot').classList.add('connected');
   const short=addr.slice(0,6)+'…'+addr.slice(-4);
   document.getElementById('wallet-addr').textContent=walletName?walletName+' · '+short:short;
-  document.getElementById('wallet-addr').classList.add('connected');
   document.getElementById('wallet-full-addr').textContent=addr;
 }
 
-function setAccountStatus(smartAccountAddr,eoaAddr){
-  document.getElementById('sidebar-connect-btn').style.display='none';
-  document.getElementById('wallet-pill').style.display='flex';
-  document.getElementById('wallet-dot').classList.add('connected');
-  const short=eoaAddr?eoaAddr.slice(0,6)+'…'+eoaAddr.slice(-4):'';
-  // Show account name if available, else wallet name
-  const acctName=currentKey?.name||currentKey?.label?.split('|')[0]||null;
-  const display=acctName
-    ?(acctName+(short?' · '+short:''))
-    :((window._echoWalletName||'Wallet')+(short?' · '+short:''));
-  document.getElementById('wallet-addr').textContent=display;
-  document.getElementById('wallet-addr').classList.add('connected');
-  const sa=document.getElementById('wallet-smart-addr');if(sa)sa.textContent=smartAccountAddr??'';
+function setAccountStatus(){
+  if(!currentKey){
+    document.getElementById('account-footer-pill').style.display='none';
+    return;
+  }
+  document.getElementById('account-footer-pill').style.display='flex';
+  const acctName=accountDisplayName(currentKey);
+  const ownerAddr=currentKey.ownerAddress||'';
+  const ownerShort=ownerAddr?ownerAddr.slice(0,6)+'…'+ownerAddr.slice(-4):'—';
+  document.getElementById('wallet-addr').textContent=acctName+' · Owner '+ownerShort;
+  const sa=document.getElementById('wallet-smart-addr');
+  if(sa)sa.textContent=currentKey.accountAddress??'';
 }
 function setNoAccountStatus(){
-  document.getElementById('sidebar-connect-btn').style.display='flex';
-  document.getElementById('wallet-pill').style.display='none';
+  document.getElementById('account-footer-pill').style.display='none';
+  document.getElementById('account-switcher-connect').style.display='block';
+  document.getElementById('account-switcher-list').style.display='none';
 }
-function toggleWalletMenu(){
-  if(!currentKey)return; // need at least an account loaded
-  walletMenuOpen=!walletMenuOpen;
-  document.getElementById('wallet-menu').classList.toggle('open',walletMenuOpen);
+function toggleAccountDropdown(){
+  accountDropdownOpen=!accountDropdownOpen;
+  const btn=document.getElementById('account-switcher-btn');
+  const dd=document.getElementById('account-dropdown');
+  if(btn)btn.classList.toggle('open',accountDropdownOpen);
+  if(dd)dd.classList.toggle('open',accountDropdownOpen);
 }
-document.addEventListener('click',e=>{if(!document.getElementById('wallet-pill').contains(e.target)){walletMenuOpen=false;document.getElementById('wallet-menu').classList.remove('open')}});
-function copyAddress(){const a=currentKey?.accountAddress;if(a)navigator.clipboard.writeText(a);walletMenuOpen=false;document.getElementById('wallet-menu').classList.remove('open')}
-function copySmartAddress(){const a=currentKey?.accountAddress;if(a){navigator.clipboard.writeText(a).catch(()=>{});} walletMenuOpen=false;document.getElementById('wallet-menu').classList.remove('open')}
+function switchAccountByIndex(i){
+  const key=allKeysForCurrentWallet[i];
+  if(!key)return;
+  switchAccount(key);
+}
+function switchAccount(key){
+  currentKey=key;
+  localStorage.setItem('echo-selected-instance-id',key.instanceId);
+  accountDropdownOpen=false;
+  document.getElementById('account-switcher-btn').classList.remove('open');
+  document.getElementById('account-dropdown').classList.remove('open');
+  (async()=>{
+    const pol=await fetch('/api/policy/'+currentKey.instanceId).then(r=>r.json());
+    currentPolicy=pol.error?null:pol;
+    const eoa=window._echoProvider?(await window._echoProvider.request({method:'eth_requestAccounts'}).then(a=>a?.[0])):null;
+    setAccountStatus(currentKey.accountAddress,eoa||'');
+    renderSidebarAccountSwitcher();
+    fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instanceId:currentKey.instanceId})}).catch(()=>{});
+    const page=window.location.hash.slice(1)||'overview';
+    if(PAGES.includes(page)&&page!=='onboarding'&&page!=='connect'&&page!=='loading'){navigate(page);}
+    else{renderOverview();renderPolicy();}
+  })();
+}
+function renderSidebarAccountSwitcher(){
+  if(!allKeysForCurrentWallet.length||!currentKey){
+    return;
+  }
+  const name=accountDisplayName(currentKey);
+  document.getElementById('account-current-avatar').src=getIdenticonDataUrl(currentKey.accountAddress);
+  document.getElementById('account-current-avatar').alt=name;
+  document.getElementById('account-current-name').textContent=name;
+  const dd=document.getElementById('account-dropdown');
+  const prefs=getAccountPrefs();
+  const keyed=allKeysForCurrentWallet.map((k,i)=>({k,i,meta:prefs[k.instanceId]||{}}));
+  const pinned=keyed.filter(x=>x.meta.pinned&&!x.meta.hidden);
+  const normal=keyed.filter(x=>(!x.meta.pinned)&&!x.meta.hidden);
+  const hidden=keyed.filter(x=>x.meta.hidden);
+  const renderItem=({k,i})=>{
+    const n=accountDisplayName(k);
+    const active=currentKey&&k.instanceId===currentKey.instanceId;
+    const meta=getAccountMeta(k.instanceId);
+    const isPinned=!!meta.pinned;
+    const isHidden=!!meta.hidden;
+    return'<div class="account-dropdown-item'+(active?' active':'')+'">'
+      +'<div class="account-dropdown-item-main" onclick="switchAccountByIndex('+i+')"><img class="account-avatar" src="'+getIdenticonDataUrl(k.accountAddress)+'" alt="" />'
+      +'<span class="account-name">'+String(n).replace(/</g,'&lt;')+'</span></div>'
+      +'<div class="account-item-actions"><button type="button" title="Account actions" onclick="event.stopPropagation();toggleAccountItemMenu(\''+k.instanceId+'\')">⋯</button></div>'
+      +'<div class="account-item-menu" data-instance-id="'+k.instanceId+'">'
+      +'<button type="button" onclick="event.stopPropagation();openRenameAccount(\''+k.instanceId+'\')">Rename</button>'
+      +'<button type="button" onclick="event.stopPropagation();togglePinAccount(\''+k.instanceId+'\')">'+(isPinned?'Unpin from top':'Pin to top')+'</button>'
+      +'<button type="button" onclick="event.stopPropagation();toggleHiddenAccount(\''+k.instanceId+'\')">'+(isHidden?'Show account':'Hidden')+'</button>'
+      +'</div>'
+      +'</div>';
+  };
+  let rowsHtml='';
+  if(pinned.length){
+    rowsHtml+='<div><div class="account-section-label">Pinned</div>'+pinned.map(renderItem).join('')+'</div>';
+  }
+  if(normal.length){
+    rowsHtml+='<div><div class="account-section-label">Accounts</div>'+normal.map(renderItem).join('')+'</div>';
+  }
+  if(hidden.length){
+    const count=hidden.length;
+    const open=window.accountHiddenSectionOpen;
+    rowsHtml+='<div><button type="button" class="account-section-label-muted'+(open?' open':'')+'" onclick="event.stopPropagation();toggleHiddenAccountsSection()"><span class="chev">▶</span><span>Hidden</span><span class="count">'+count+'</span></button>';
+    if(open){
+      rowsHtml+=hidden.map(renderItem).join('');
+    }
+    rowsHtml+='</div>';
+  }
+  dd.innerHTML='<div class="account-dropdown-list">'+rowsHtml+'</div><div class="account-dropdown-footer"><button type="button" class="btn btn-ghost btn-sm" onclick="navigate(\'onboarding\')">+ Add account</button></div>';
+  document.getElementById('account-switcher-connect').style.display='none';
+  document.getElementById('account-switcher-list').style.display='block';
+}
+function copyAccountAddress(addr){
+  if(addr)navigator.clipboard.writeText(addr).catch(()=>{});
+  accountDropdownOpen=false;document.getElementById('account-switcher-btn')?.classList.remove('open');document.getElementById('account-dropdown')?.classList.remove('open');
+}
+function copyAccountAddressByIndex(i){
+  const k=allKeysForCurrentWallet[i];
+  if(k?.accountAddress)copyAccountAddress(k.accountAddress);
+}
+let accountHiddenSectionOpen=false;
+let openAccountMenuId=null;
+function toggleHiddenAccountsSection(){
+  accountHiddenSectionOpen=!accountHiddenSectionOpen;
+  window.accountHiddenSectionOpen=accountHiddenSectionOpen;
+  renderSidebarAccountSwitcher();
+}
+function toggleAccountItemMenu(instanceId){
+  openAccountMenuId=openAccountMenuId===instanceId?null:instanceId;
+  document.querySelectorAll('.account-item-menu').forEach(el=>{
+    const id=el.getAttribute('data-instance-id');
+    el.classList.toggle('open',id===openAccountMenuId);
+  });
+}
+function togglePinAccount(instanceId){
+  const meta=getAccountMeta(instanceId);
+  updateAccountPrefs(instanceId,{pinned:!meta.pinned});
+  renderSidebarAccountSwitcher();
+}
+function toggleHiddenAccount(instanceId){
+  const meta=getAccountMeta(instanceId);
+  updateAccountPrefs(instanceId,{hidden:!meta.hidden});
+  renderSidebarAccountSwitcher();
+}
+let renameAccountTargetId=null;
+function openRenameAccount(instanceId){
+  const key=allKeysForCurrentWallet.find(k=>k.instanceId===instanceId);
+  if(!key)return;
+  renameAccountTargetId=instanceId;
+  const input=document.getElementById('modal-account-rename-input');
+  const title=document.getElementById('modal-account-rename-title');
+  if(title)title.textContent='Rename account';
+  if(input){
+    input.value=accountDisplayName(key);
+    setTimeout(()=>{input.focus();input.select();},10);
+  }
+  openModal('modal-account-rename');
+}
+function saveRenameAccount(){
+  if(!renameAccountTargetId){closeModal('modal-account-rename');return}
+  const input=document.getElementById('modal-account-rename-input');
+  const val=input?.value?.trim()||'';
+  if(val.length){
+    updateAccountPrefs(renameAccountTargetId,{nameOverride:val});
+  }
+  closeModal('modal-account-rename');
+  renderSidebarAccountSwitcher();
+}
+function copySmartAddress(){const a=currentKey?.accountAddress;if(a)navigator.clipboard.writeText(a).catch(()=>{});closeFooterAccountMenu();}
+function toggleFooterAccountMenu(){
+  if(!currentKey)return;
+  footerMenuOpen=!footerMenuOpen;
+  document.getElementById('account-footer-menu').classList.toggle('open',footerMenuOpen);
+}
+function closeFooterAccountMenu(){footerMenuOpen=false;document.getElementById('account-footer-menu')?.classList.remove('open');}
+document.addEventListener('click',e=>{
+  const sw=document.getElementById('account-switcher-list');
+  if(sw&&!sw.contains(e.target)){accountDropdownOpen=false;document.getElementById('account-switcher-btn')?.classList.remove('open');document.getElementById('account-dropdown')?.classList.remove('open')}
+  const fp=document.getElementById('account-footer-pill');
+  if(fp&&!fp.contains(e.target)){footerMenuOpen=false;document.getElementById('account-footer-menu')?.classList.remove('open')}
+});
 
 async function migrateLegacyAccount(){
-  if(!window._echoProvider){showWalletPicker();return}
-  const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
-  const eoaAddr=accounts[0];
-  if(!eoaAddr){return}
-  // Find legacy keys (no ownerAddress)
-  const keysRes=await fetch('/api/keys').then(r=>r.json());
-  const legacy=keysRes.keys?.filter(k=>!k.ownerAddress)??[];
-  if(!legacy.length){alert('No legacy accounts to migrate.');return}
-  // Patch all legacy keys with current EOA as owner
-  for(const key of legacy){
-    await fetch('/api/keys/'+key.instanceId,{
-      method:'PATCH',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ownerAddress:eoaAddr}),
-    });
-  }
-  alert('✓ Linked '+legacy.length+' account(s) to '+eoaAddr.slice(0,6)+'…'+eoaAddr.slice(-4)+'. Reloading…');
-  setTimeout(()=>window.location.reload(),800);
-}
-function disconnectWallet(){
-  window._echoProvider=null;window._echoWalletName=null;currentKey=null;currentPolicy=null;
-  walletMenuOpen=false;detectedWallets.clear();
-  window.dispatchEvent(new Event('eip6963:requestProvider'));
-  document.getElementById('wallet-menu').classList.remove('open');
-  const eoaSection=document.getElementById('wallet-eoa-section');if(eoaSection)eoaSection.style.display='none';
-  const dBtn=document.getElementById('wallet-disconnect-btn');if(dBtn)dBtn.style.display='none';
-  setNoAccountStatus();navigate('connect');
-}
-function closeMenu(){
-  walletMenuOpen=false;
-  document.getElementById('wallet-menu').classList.remove('open');
+  window._echoAfterConnect=async()=>{
+    const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
+    const eoaAddr=accounts?.[0];
+    if(!eoaAddr)return;
+    const keysRes=await fetch('/api/keys').then(r=>r.json());
+    const legacy=(keysRes.keys||[]).filter(k=>!k.ownerAddress);
+    if(!legacy.length){alert('No legacy accounts to migrate.');return}
+    for(const key of legacy){
+      await fetch('/api/keys/'+key.instanceId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerAddress:eoaAddr})});
+    }
+    alert('✓ Linked '+legacy.length+' account(s).');window._echoAfterConnect=null;
+    window.location.reload();
+  };
+  showWalletPicker();
 }
 
 function showWalletPicker(){
@@ -728,21 +949,8 @@ async function connectWithProvider(provider,name){
     window._echoProvider=provider;
     window._echoWalletName=name;
     const eoaAddr=accounts[0];
-    setWalletDisplay(eoaAddr,name);
-    // Show EOA section and disconnect button in wallet menu
-    const eoaSection=document.getElementById('wallet-eoa-section');
-    if(eoaSection)eoaSection.style.display='block';
-    const fullAddr=document.getElementById('wallet-full-addr');
-    if(fullAddr)fullAddr.textContent=eoaAddr;
-    const disconnectBtn=document.getElementById('wallet-disconnect-btn');
-    if(disconnectBtn)disconnectBtn.style.display='block';
-    const connectAgainBtn=document.getElementById('wallet-connect-again-btn');
-    if(connectAgainBtn)connectAgainBtn.style.display='none';
-    // Always reload account data when wallet connects (covers connect page + wallet switch)
-    try{await loadAccountForWallet(eoaAddr)}
-    catch(e){const el=document.getElementById('connect-error');if(el){el.textContent='Failed to load: '+e.message;el.classList.remove('hidden')}}
-    // Notify onboarding
     obOnWalletConnected(eoaAddr,name);
+    if(typeof window._echoAfterConnect==='function'){await window._echoAfterConnect();window._echoAfterConnect=null;}
   }catch(e){showOb('Connection rejected: '+(e.message||e),'error')}
 }
 
@@ -750,7 +958,7 @@ function renderOverview(){
   if(!currentPolicy||!currentKey)return;
   const p=currentPolicy;
   document.getElementById('ov-status-pill').innerHTML=p.paused?'<span class="pill pill-red"><span class="dot"></span> Paused</span>':'<span class="pill pill-green"><span class="dot"></span> Active</span>';
-  const acctLabel=currentKey?.name||currentKey?.label?.split('|')[0]||'Account';
+  const acctLabel=accountDisplayName(currentKey);
   document.getElementById('ov-instance-id').textContent=acctLabel+' · '+currentKey.instanceId?.slice(0,10)+'…';
   const total=Number(p.globalTotalBudget),spent=Number(p.globalTotalSpent),tPct=total>0?Math.min(100,Math.round(spent/total*100)):0;
   document.getElementById('ov-total-budget').textContent=fmtUsd(total);
@@ -772,7 +980,7 @@ function renderPolicy(){
   const eb=Number(p.explorationBudget),es=Number(p.explorationSpent),ep=eb>0?Math.min(100,Math.round(es/eb*100)):0;
   document.getElementById('pol-explore-budget').textContent=fmtUsd(eb);
   document.getElementById('pol-explore-spent').textContent=fmtUsd(es);setBar('pol-explore-bar',ep);
-  const polLabel=currentKey?.name||currentKey?.label?.split('|')[0]||'—';
+  const polLabel=accountDisplayName(currentKey);
   document.getElementById('pol-template').textContent=polLabel;
   document.getElementById('pol-expiry').textContent=new Date(p.expiry*1000).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
   document.getElementById('pol-total-budget').textContent=fmtUsd(p.globalTotalBudget);
@@ -1166,8 +1374,10 @@ async function createAccount(){
     }).then(r=>r.json());
     if(keyRes.error)throw new Error(keyRes.error);
     showOb('✓ Account deployed! Loading dashboard…','info');
-    // Load directly without reload — preserve wallet connection
-    await loadAccountForWallet(owner);
+    window._echoProvider=null;
+    window._echoWalletName=null;
+    await loadAllAccounts();
+    navigate('overview');
   }catch(err){showOb(err.message??String(err),'error');btn.disabled=false;btn.textContent='Deploy Account'}
 }
 
@@ -1220,7 +1430,7 @@ async function signPendingTx(){
   if(!pendingTxQueue)return;
   const{to,calldata,onSuccess,resultEl}=pendingTxQueue;
   const provider=window._echoProvider;
-  if(!provider){showResult('ptx-result','Connect your wallet first.','error');return}
+  if(!provider){showResult('ptx-result','Connect your wallet to sign.','warn');showWalletPicker();return}
   try{
     const accounts=await provider.request({method:'eth_requestAccounts'});
     showResult('ptx-result','Waiting for wallet confirmation…','info');

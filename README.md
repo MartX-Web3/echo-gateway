@@ -10,7 +10,15 @@ The local execution gateway for Echo Protocol. Runs on your machine alongside yo
 
 Echo Gateway has two jobs:
 
-1. **Control plane (for AI agents):** Exposes an MCP server that OpenClaw uses to query available tools, submit intents, manage sessions, and monitor activity.
+1. **Dashboard & control plane (for humans + AI agents):**
+   - Serves a local dashboard where users complete onboarding after starting the gateway.
+   - The dashboard lists all **active Echo smart accounts** stored in the local KeyStore. If none exist, it walks the user through onboarding:
+     - connect an EOA wallet and confirm ownership,
+     - choose a **smart account nickname**,
+     - deploy a smart account + policy using a **default policy template** (no need to tune every limit up-front),
+     - store the execute key locally.
+   - Management is **smart-account centric**: each entry in the UI represents one Echo smart account, its bound owner wallet, its active policy instance (and on-chain address), and its recent activity. Users can switch between smart accounts in the sidebar, similar to switching wallets in MetaMask.
+   - Exposes an MCP server that agent frameworks (e.g. OpenClaw) use to query available tools, submit intents, manage sessions, and monitor activity **for the currently selected smart account**.
 2. **Execution plane (for transactions):** Intercepts Ethereum RPC calls from tools, runs two-stage pre-validation, builds UserOperations, and submits them to Pimlico.
 
 The gateway enforces Echo's security model at the application layer — but the on-chain `EchoPolicyValidator` is always the final authority.
@@ -209,8 +217,8 @@ The Key Store is an AES-256 encrypted local file that persists execute keys and 
 ### Prerequisites
 
 - Node.js 20+
-- An Echo account deployed via [echo-dashboard](https://github.com/echo-protocol/echo-dashboard)
-- OpenClaw installed locally
+- A browser to access the local Echo Gateway dashboard (the dashboard will deploy your Echo smart account during onboarding)
+- OpenClaw (or another MCP-compatible agent) installed locally
 
 ### Install
 
@@ -258,6 +266,17 @@ npm start
 The gateway starts two services:
 - MCP Server on `localhost:3000`
 - Proxy Adapter on `localhost:8545`
+
+After the process starts, **open the dashboard in your browser first**:
+
+- If there are no smart accounts in the local KeyStore, the dashboard automatically enters the onboarding flow:
+  - connect your wallet,
+  - set a nickname for the new smart account,
+  - deploy the account + policy using a default, conservative policy template (progressive security model: low limits at first; extend as needed),
+  - generate and bind an execute key locally.
+- If there are existing smart accounts, the dashboard shows them in a list and lets you switch between them for management.
+
+Once onboarding is complete and you have at least one active smart account, you can connect MCP-compatible agents. All MCP tools operate in the context of the **currently selected smart account** in the dashboard.
 
 ### Connect to OpenClaw
 

@@ -2,6 +2,14 @@
 
 The MCP Server is the agent-facing interface of Echo Gateway. It exposes Echo Protocol's permission and execution layer as [Model Context Protocol](https://modelcontextprotocol.io) tools, allowing any MCP-compatible agent framework (OpenClaw, LangChain, custom bots) to interact with DeFi protocols within user-defined on-chain boundaries.
 
+The MCP layer is **smart-account centric**:
+
+- Users start by opening the local **Echo Gateway dashboard** after launching the process.
+- The dashboard handles onboarding: connect an EOA wallet, deploy an Echo smart account, and create a policy instance using a **default policy template** (no need to tune every limit at first).
+- Each entry in the dashboard represents one smart account, its bound owner wallet, its active policy instance (and address), and its recent activity.
+- Users can switch between smart accounts in the sidebar, similar to switching wallets in MetaMask.
+- The MCP tools operate in the context of the **currently selected smart account / policy instance**. Agents simply call tools; they do not need to manage policy templates directly.
+
 ## How it fits in
 
 ```
