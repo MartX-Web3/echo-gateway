@@ -19,7 +19,7 @@ Echo Gateway has two jobs:
      - store the execute key locally.
    - Management is **smart-account centric**: each entry in the UI represents one Echo smart account, its bound owner wallet, its active policy instance (and on-chain address), and its recent activity. Users can switch between smart accounts in the sidebar, similar to switching wallets in MetaMask.
    - Exposes an MCP server that agent frameworks (e.g. OpenClaw) use to query available tools, submit intents, manage sessions, and monitor activity **for the currently selected smart account**.
-2. **Execution plane (for transactions):** Intercepts Ethereum RPC calls from tools, runs two-stage pre-validation, builds UserOperations, and submits them to Pimlico.
+2. **Execution plane (for transactions):** Explicit transactions are built by the gateway (no separate “build transaction” tool; no RPC intercept). We build UserOperations from agent intents using **user-registered protocols** (allowedTargets) and **allowed selectors**, run **two-stage pre-validation** (PreValidator), then submit via Pimlico.
 
 The gateway enforces Echo's security model at the application layer — but the on-chain `EchoPolicyValidator` is always the final authority.
 
@@ -39,9 +39,7 @@ OpenClaw agent
  │    ├─ echo_revoke_session
  │    └─ echo_get_activity_log
  │
- └─ Proxy Adapter (port 8545)       ← transparent RPC proxy
-      └─ eth_sendTransaction → intercept + wrap
-         all other methods  → passthrough to Alchemy
+ └─ RPC proxy (/api/rpc)             ← passthrough only (e.g. for dashboard); no intercept
 
 
 Internal components:
@@ -251,9 +249,8 @@ KEYSTORE_PASSWORD=your_local_password
 # MCP Server
 MCP_PORT=3000
 
-# Proxy Adapter
-PROXY_PORT=8545
-ALCHEMY_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+# RPC (gateway and /api/rpc passthrough use this; no intercept)
+SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
 ```
 
 ### Start
@@ -263,9 +260,7 @@ npm run build
 npm start
 ```
 
-The gateway starts two services:
-- MCP Server on `localhost:3000`
-- Proxy Adapter on `localhost:8545`
+The gateway starts the HTTP server (dashboard + API). RPC proxy is at `/api/rpc` (passthrough only; no intercept).
 
 After the process starts, **open the dashboard in your browser first**:
 
@@ -322,8 +317,9 @@ src/
 ├── mcp/
 │   ├── McpServer.ts        MCP server setup
 │   └── tools/              one file per MCP tool
-├── proxy/
-│   └── ProxyAdapter.ts     HTTP proxy on :8545
+├── http/
+│   └── routes/
+│       └── rpcProxy.ts     RPC passthrough (/api/rpc); no intercept
 ├── userop/
 │   └── UserOpBuilder.ts    ERC-4337 UserOp construction
 ├── contracts/

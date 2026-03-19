@@ -101,7 +101,10 @@ interface PackedUserOp {
   accountGasLimits:     Hex;  // abi.encodePacked(verificationGasLimit, callGasLimit)
   preVerificationGas:   Hex;
   gasFees:              Hex;  // abi.encodePacked(maxPriorityFeePerGas, maxFeePerGas)
-  paymasterAndData:     Hex;
+  paymaster:            Address | null;
+  paymasterData:        Hex;
+  paymasterVerificationGasLimit: Hex;
+  paymasterPostOpGasLimit:       Hex;
   signature:            Hex;
 }
 
@@ -142,7 +145,21 @@ export class UserOpBuilder {
     // Step 2: Fetch nonce from EntryPoint
     const nonce = await this._getNonce(account);
 
-    // Step 3: Build a partial UserOp (no gas fields yet, placeholder signature)
+    // Step 3: Fetch recommended fees for this user operation
+    const gasPrice = await this._rpc<{
+      fast: {
+        maxFeePerGas: Hex;
+        maxPriorityFeePerGas: Hex;
+      };
+    }>('pimlico_getUserOperationGasPrice', []);
+
+    // Step 4: Build a partial UserOp (gas estimation will fill in gas limits + paymaster)
+    const partialOpGasFees = this._packUint128x2(
+      hexToBigInt(gasPrice.fast.maxPriorityFeePerGas),
+      hexToBigInt(gasPrice.fast.maxFeePerGas),
+    );
+
+    // Step 5: Build a partial UserOp (no gas fields yet, placeholder signature)
     const partialOp: PackedUserOp = {
       sender:             account,
       nonce:              toHex(nonce),
@@ -150,21 +167,24 @@ export class UserOpBuilder {
       callData:           outerCalldata,
       accountGasLimits:   ('0x' + '00'.repeat(32)) as Hex,  // filled by sponsor
       preVerificationGas: '0x0',                     // filled by sponsor
-      gasFees:            ('0x' + '00'.repeat(32)) as Hex,   // filled by sponsor
-      paymasterAndData:   '0x',                      // filled by sponsor
+      gasFees:            partialOpGasFees,          // set from pimlico_getUserOperationGasPrice
+      paymaster:          null,                     // filled by sponsor
+      paymasterData:      '0x',
+      paymasterVerificationGasLimit: '0x0',
+      paymasterPostOpGasLimit:       '0x0',
       signature:          ('0x' + '00'.repeat(65)) as Hex,   // dummy for gas estimation
     };
 
-    // Step 4: Call pm_sponsorUserOperation → get paymasterAndData + gas
+    // Step 6: Call pm_sponsorUserOperation → get paymaster + gas
     const sponsored = await this._sponsorUserOp(partialOp);
 
-    // Step 5: Attach real signature
+    // Step 7: Attach real signature
     const finalOp: PackedUserOp = { ...sponsored, signature };
 
-    // Step 6: Submit
+    // Step 8: Submit
     const userOpHash = await this._sendUserOp(finalOp);
 
-    // Step 7: Poll for receipt
+    // Step 9: Poll for receipt
     const txHash = await this._waitForReceipt(userOpHash);
 
     return { userOpHash, txHash };
@@ -211,18 +231,18 @@ export class UserOpBuilder {
 
   /**
    * Call pm_sponsorUserOperation to get:
-   *   - paymasterAndData (Pimlico Verifying Paymaster signature)
-   *   - gas estimates (verificationGasLimit, callGasLimit, preVerificationGas,
-   *                    maxFeePerGas, maxPriorityFeePerGas)
+   *   - paymaster fields (paymaster, paymasterData, paymaster gas limits)
+   *   - gas estimates (verificationGasLimit, callGasLimit, preVerificationGas)
    */
   private async _sponsorUserOp(op: PackedUserOp): Promise<PackedUserOp> {
     const result = await this._rpc<{
-      paymasterAndData:     Hex;
+      paymaster:            Address;
+      paymasterData:        Hex;
+      paymasterVerificationGasLimit: Hex;
+      paymasterPostOpGasLimit:       Hex;
       preVerificationGas:   Hex;
       verificationGasLimit: Hex;
       callGasLimit:         Hex;
-      maxFeePerGas:         Hex;
-      maxPriorityFeePerGas: Hex;
     }>('pm_sponsorUserOperation', [
       this._opToRpcFormat(op),
       ENTRY_POINT_V07,
@@ -236,11 +256,10 @@ export class UserOpBuilder {
       ...op,
       accountGasLimits:   this._packUint128x2(verGas, callGas),
       preVerificationGas: result.preVerificationGas,
-      gasFees:            this._packUint128x2(
-        hexToBigInt(result.maxPriorityFeePerGas),
-        hexToBigInt(result.maxFeePerGas),
-      ),
-      paymasterAndData: result.paymasterAndData,
+      paymaster:                     result.paymaster,
+      paymasterData:                 result.paymasterData,
+      paymasterVerificationGasLimit: result.paymasterVerificationGasLimit,
+      paymasterPostOpGasLimit:       result.paymasterPostOpGasLimit,
     };
   }
 
@@ -315,7 +334,7 @@ export class UserOpBuilder {
     // initCode → factory + factoryData (empty = no deployment)
     const [verificationGasLimit, callGasLimit] = this._unpackUint128x2(op.accountGasLimits);
     const [maxPriorityFeePerGas, maxFeePerGas] = this._unpackUint128x2(op.gasFees);
-    const [paymaster, paymasterData] = this._unpackPaymaster(op.paymasterAndData);
+    const paymaster = op.paymaster;
 
     const result: Record<string, unknown> = {
       sender:                op.sender,
@@ -331,10 +350,10 @@ export class UserOpBuilder {
 
     // Only include paymaster fields if there's a paymaster
     if (paymaster && paymaster !== '0x0000000000000000000000000000000000000000') {
-      result.paymaster                    = paymaster;
-      result.paymasterData                = paymasterData;
-      result.paymasterVerificationGasLimit = toHex(100_000n);
-      result.paymasterPostOpGasLimit       = toHex(50_000n);
+      result.paymaster = paymaster;
+      result.paymasterData = op.paymasterData;
+      result.paymasterVerificationGasLimit = op.paymasterVerificationGasLimit;
+      result.paymasterPostOpGasLimit = op.paymasterPostOpGasLimit;
     }
 
     // Only include factory if initCode is non-empty
@@ -351,15 +370,6 @@ export class UserOpBuilder {
     const high = n >> 128n;
     const low  = n & ((1n << 128n) - 1n);
     return [high, low];
-  }
-
-  private _unpackPaymaster(paymasterAndData: Hex): [string, Hex] {
-    if (!paymasterAndData || paymasterAndData === '0x' || paymasterAndData.length < 42) {
-      return ['0x0000000000000000000000000000000000000000', '0x'];
-    }
-    const paymaster    = '0x' + paymasterAndData.slice(2, 42);
-    const paymasterData = ('0x' + paymasterAndData.slice(42)) as Hex;
-    return [paymaster, paymasterData];
   }
 
   /**

@@ -25,7 +25,7 @@ OpenClaw / LangChain / any MCP-compatible agent
         └── UserOpBuilder    — assembles ERC-4337 UserOperation → Pimlico
 ```
 
-The agent never touches private keys, calldata construction, or the bundler directly. It declares an intent; Echo Gateway validates, builds, signs, and submits.
+The agent never touches private keys, calldata construction, or the bundler directly. **Explicit transactions are built by the gateway** from user-registered protocols (allowedTargets) and allowed selectors; we run **prevalidation** (PreValidator) first, then build and submit the UserOperation. There is no separate “build transaction” tool and no RPC intercept.
 
 ---
 

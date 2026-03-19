@@ -74,7 +74,7 @@ This produces the outer calldata layout that `EchoPolicyValidator._extractTarget
 - `verificationGasLimit` and `callGasLimit`: estimated via `eth_estimateUserOperationGas` (Pimlico)
 - `preVerificationGas`: returned by the same estimate call
 - `maxFeePerGas` and `maxPriorityFeePerGas`: from `pimlico_getUserOperationGasPrice`
-- Paymaster: **none** — user pays gas from their AccountERC7579 ETH balance
+- Paymaster: **Pimlico Verifying Paymaster** — sponsor gas fees, so the user does not need ETH in `AccountERC7579` for gas
 - Gas limits are padded by 20% to reduce revert risk from estimation error
 
 ---

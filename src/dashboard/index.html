@@ -263,8 +263,8 @@
         <div class="card"><div class="card-label">Daily Cap</div><div class="flex items-center justify-between"><div><div class="card-value" id="pol-daily-limit">—</div><div class="card-sub"><span id="pol-daily-spent">—</span> used today</div></div><button class="btn btn-ghost btn-sm edit-only hidden" onclick="openModal('modal-global')">Edit</button></div><div class="progress-track"><div class="progress-fill" id="pol-daily-bar" style="width:0%"></div></div></div>
         <div class="card"><div class="card-label">Exploration Budget</div><div class="flex items-center justify-between"><div><div class="card-value" id="pol-explore-budget">—</div><div class="card-sub"><span id="pol-explore-spent">—</span> used</div></div><button class="btn btn-ghost btn-sm edit-only hidden" onclick="openModal('modal-explore')">Edit</button></div><div class="progress-track"><div class="progress-fill" id="pol-explore-bar" style="width:0%"></div></div></div>
       </div>
-      <div class="section-header"><div class="section-title">Token Limits</div><button class="btn btn-secondary btn-sm edit-only hidden" onclick="openModal('modal-token');document.getElementById('modal-token-title').textContent='Add Token Limit'">+ Add Token</button></div>
-      <div class="card mb-24" style="padding:0;overflow:hidden"><table class="table"><thead><tr><th>Token</th><th>Max per Swap</th><th>Daily Cap</th><th>Used Today</th><th class="edit-only hidden"></th></tr></thead><tbody id="pol-token-table"><tr><td colspan="5" style="text-align:center;color:var(--subtle);padding:20px">No token limits</td></tr></tbody></table></div>
+      <div class="section-header"><div class="section-title">Token Limits</div><button class="btn btn-secondary btn-sm edit-only hidden" onclick="openAddTokenLimit()">+ Add Token</button></div>
+      <div class="card mb-24" style="padding:0;overflow:hidden"><table class="table"><thead><tr><th>Token</th><th>Max per Swap</th><th>Daily Cap</th><th>Used Today</th><th>Remaining Today</th><th class="edit-only hidden"></th></tr></thead><tbody id="pol-token-table"><tr><td colspan="6" style="text-align:center;color:var(--subtle);padding:20px">No token limits</td></tr></tbody></table></div>
       <div class="section-header"><div class="section-title">Policy Info</div></div>
       <div class="card">
         <div class="flex justify-between" style="padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--subtle)">Template</span><span class="mono" style="font-size:12px" id="pol-template">—</span></div>
@@ -610,7 +610,7 @@
 
 <div class="modal-overlay" id="modal-explore"><div class="modal"><div class="modal-header"><div class="modal-title">Edit Exploration Budget</div><button class="modal-close" onclick="closeModal('modal-explore')">×</button></div><div class="field"><label>Total Exploration Budget (USDC)</label><input type="number" id="me-budget" placeholder="50" min="0"/><div class="field-hint">Amount agent can spend on non-whitelisted tokens</div></div><div class="field"><label>Per Transaction Limit (USDC)</label><input type="number" id="me-pertx" placeholder="10" min="0"/></div><div id="me-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" onclick="saveExploreBudget()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-explore')">Cancel</button></div></div></div>
 
-<div class="modal-overlay" id="modal-token"><div class="modal"><div class="modal-header"><div class="modal-title" id="modal-token-title">Set Token Limit</div><button class="modal-close" onclick="closeModal('modal-token')">×</button></div><div class="field"><label>Token</label><select id="mt-token" onchange="onTokenSelect()"><option value="0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8">USDC (Sepolia)</option><option value="0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9">WETH (Sepolia)</option><option value="custom">Custom…</option></select></div><div class="field hidden" id="mt-custom-field"><label>Token Address</label><input type="text" id="mt-custom-addr" placeholder="0x…"/></div><div class="grid-2" style="gap:12px"><div class="field"><label>Max per Swap (USDC)</label><input type="number" id="mt-perOp" placeholder="100" min="1"/></div><div class="field"><label>Max per Day (USDC)</label><input type="number" id="mt-perDay" placeholder="500" min="1"/></div></div><div id="mt-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" onclick="saveTokenLimit()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-token')">Cancel</button></div></div></div>
+<div class="modal-overlay" id="modal-token"><div class="modal"><div class="modal-header"><div class="modal-title" id="modal-token-title">Set Token Limit</div><button class="modal-close" onclick="closeModal('modal-token')">×</button></div><div class="field"><label>Token Address</label><input type="text" id="mt-token-addr" placeholder="0x…" oninput="mtDebouncedTokenLookup()" onkeydown="if(event.key==='Enter'){mtLookupTokenMeta()}"/><div class="field-hint" style="display:flex;justify-content:space-between;gap:12px"><span>Symbol: <span class="mono" id="mt-token-symbol">—</span></span><span>Balance: <span class="mono" id="mt-token-balance">—</span></span></div></div><div class="grid-2" style="gap:12px"><div class="field" style="margin-bottom:0"><label>Max per Swap (USDC)</label><input type="number" id="mt-perOp" placeholder="100" min="1"/></div><div class="field" style="margin-bottom:0"><label>Max per Day (USDC)</label><input type="number" id="mt-perDay" placeholder="500" min="1"/></div></div><div id="mt-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" onclick="saveTokenLimit()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-token')">Cancel</button></div></div></div>
 
 <div class="modal-overlay" id="modal-create-session"><div class="modal"><div class="modal-header"><div class="modal-title">New Session</div><button class="modal-close" onclick="closeModal('modal-create-session')">×</button></div><div class="grid-2" style="gap:12px"><div class="field"><label>Token In</label><select id="ms-tokenIn"><option value="0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8">USDC</option><option value="0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9">WETH</option></select></div><div class="field"><label>Token Out</label><select id="ms-tokenOut"><option value="0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9">WETH</option><option value="0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8">USDC</option></select></div><div class="field"><label>Max per Swap (USDC)</label><input type="number" id="ms-maxPerOp" placeholder="50"/></div><div class="field"><label>Total Budget (USDC)</label><input type="number" id="ms-budget" placeholder="350"/></div><div class="field"><label>Max ops per day</label><input type="number" id="ms-opsPerDay" placeholder="2" min="1"/></div><div class="field"><label>Duration (days)</label><input type="number" id="ms-days" placeholder="30" min="1" max="365"/></div></div><div id="ms-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" id="ms-create-btn" onclick="createSession()">Create Session</button><button class="btn btn-ghost" onclick="closeModal('modal-create-session')">Cancel</button></div></div></div>
 
@@ -1030,10 +1030,13 @@ function renderPolicy(){
   const tbody=document.getElementById('pol-token-table');
   if(p.tokenLimits?.length>0){
     tbody.innerHTML=p.tokenLimits.map(tl=>{
-      const pct=Number(tl.maxPerDay)>0?Math.min(100,Math.round(Number(tl.dailySpent)/Number(tl.maxPerDay)*100)):0;
-      return`<tr><td><div style="font-size:13px">${tokenSymbol(tl.token)}</div><div class="addr copyable-addr" style="margin-top:4px" onclick="copyToClipboard('${tl.token}',this)" title="Copy full token address">${tl.token.slice(0,10)}…${tl.token.slice(-6)}<span class="copy-icon" aria-hidden="true">⧉</span></div></td><td class="mono">${fmtUsd(tl.maxPerOp)}</td><td class="mono">${fmtUsd(tl.maxPerDay)}</td><td><div class="mono" style="font-size:12px">${fmtUsd(tl.dailySpent)}</div><div class="progress-track" style="margin-top:4px;width:80px"><div class="progress-fill ${pctClass(pct)}" style="width:${pct}%"></div></div></td><td class="edit-only hidden"><button class="btn btn-ghost btn-sm" onclick="openEditToken('${tl.token}','${tl.maxPerOp}','${tl.maxPerDay}')">Edit</button></td></tr>`;
+      const maxPerDay=Number(tl.maxPerDay);
+      const dailySpent=Number(tl.dailySpent);
+      const pct=maxPerDay>0?Math.min(100,Math.round(dailySpent/maxPerDay*100)):0;
+      const remainingToday=Math.max(0,maxPerDay-dailySpent);
+      return`<tr><td><div style="font-size:13px">${tokenSymbol(tl.token)}</div><div class="addr copyable-addr" style="margin-top:4px" onclick="copyToClipboard('${tl.token}',this)" title="Copy full token address">${tl.token.slice(0,10)}…${tl.token.slice(-6)}<span class="copy-icon" aria-hidden="true">⧉</span></div></td><td class="mono">${fmtUsd(tl.maxPerOp)}</td><td class="mono">${fmtUsd(tl.maxPerDay)}</td><td><div class="mono" style="font-size:12px">${fmtUsd(tl.dailySpent)}</div><div class="progress-track" style="margin-top:4px;width:80px"><div class="progress-fill ${pctClass(pct)}" style="width:${pct}%"></div></div></td><td class="mono">${fmtUsd(remainingToday)}</td><td class="edit-only hidden"><button class="btn btn-ghost btn-sm" onclick="openEditToken('${tl.token}','${tl.maxPerOp}','${tl.maxPerDay}')">Edit</button></td></tr>`;
     }).join('');
-  }else{tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--subtle);padding:20px">No token limits — exploration mode only</td></tr>'}
+  }else{tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--subtle);padding:20px">No token limits — exploration mode only</td></tr>'}
   const pauseBtn=document.getElementById('pause-btn');
   if(!p.paused){pauseBtn.classList.remove('hidden');pauseBtn.textContent='⏸ Pause'}else{pauseBtn.textContent='▶ Unpause';pauseBtn.classList.remove('hidden')}
 }
@@ -1044,6 +1047,185 @@ function toggleEditMode(){
   document.querySelectorAll('.edit-only').forEach(el=>el.classList.toggle('hidden',!editMode));
   if(editMode){btn.textContent='✕ Done';btn.classList.remove('btn-secondary');btn.classList.add('btn-primary')}
   else{btn.textContent='✎ Edit';btn.classList.add('btn-secondary');btn.classList.remove('btn-primary')}
+}
+
+// ── Token Limits (Policy) ─────────────────────────────────────────────
+let mtTokenLookupTimer=null;
+let mtTokenLookupSeq=0;
+
+function isValidEthAddress(addr){
+  return typeof addr==='string' && /^0x[a-fA-F0-9]{40}$/.test(addr.trim());
+}
+
+function mtSetTokenMeta({symbol,balance}){
+  const symEl=document.getElementById('mt-token-symbol');
+  const balEl=document.getElementById('mt-token-balance');
+  if(symEl) symEl.textContent=symbol??'—';
+  if(balEl) balEl.textContent=balance??'—';
+}
+
+function mtSetTokenMetaLoading(){
+  mtSetTokenMeta({symbol:'Loading…',balance:'Loading…'});
+}
+
+function mtResetTokenLimitModal(){
+  const addrEl=document.getElementById('mt-token-addr');
+  if(addrEl) addrEl.value='';
+  const perOpEl=document.getElementById('mt-perOp');
+  if(perOpEl) perOpEl.value='';
+  const perDayEl=document.getElementById('mt-perDay');
+  if(perDayEl) perDayEl.value='';
+  const resEl=document.getElementById('mt-result');
+  if(resEl){resEl.textContent='';resEl.classList.add('hidden')}
+  mtSetTokenMeta({symbol:'—',balance:'—'});
+}
+
+function openAddTokenLimit(){
+  mtResetTokenLimitModal();
+  const title=document.getElementById('modal-token-title');
+  if(title)title.textContent='Add Token Limit';
+  openModal('modal-token');
+  setTimeout(()=>{document.getElementById('mt-token-addr')?.focus();},10);
+}
+
+function mtDebouncedTokenLookup(){
+  const addr=document.getElementById('mt-token-addr')?.value?.trim()||'';
+  if(mtTokenLookupTimer)clearTimeout(mtTokenLookupTimer);
+  if(!addr || !isValidEthAddress(addr)){
+    mtSetTokenMeta({symbol:'—',balance:'—'});
+    return;
+  }
+  mtTokenLookupTimer=setTimeout(()=>{mtLookupTokenMeta();},500);
+}
+
+async function mtLookupTokenMeta(){
+  const addr=document.getElementById('mt-token-addr')?.value?.trim()||'';
+  if(!isValidEthAddress(addr)){mtSetTokenMeta({symbol:'—',balance:'—'});return;}
+  if(!currentKey?.accountAddress){showResult('mt-result','No smart account loaded.','error');return;}
+
+  const tokenAddr=addr.toLowerCase();
+  mtTokenLookupSeq++;
+  const seq=mtTokenLookupSeq;
+
+  mtSetTokenMetaLoading();
+
+  const rpcUrl=new URL('/api/rpc',window.location.href).toString();
+  const provider=new ethers.JsonRpcProvider(rpcUrl);
+
+  const abi=[
+    'function symbol() view returns (string)',
+    'function decimals() view returns (uint8)',
+    'function balanceOf(address) view returns (uint256)',
+  ];
+  const c=new ethers.Contract(tokenAddr,abi,provider);
+
+  let symbol=null;
+  let decimals=18;
+  let bal=0n;
+  try{symbol=await c.symbol();}catch{}
+  try{decimals=Number(await c.decimals()); if(!Number.isFinite(decimals) || decimals<0)decimals=18;}catch{}
+  try{bal=await c.balanceOf(currentKey.accountAddress);}catch{}
+
+  if(seq!==mtTokenLookupSeq) return; // stale
+
+  const sym=symbol||tokenSymbol(tokenAddr);
+  const balStr=(()=>{
+    try{
+      const fmt=ethers.formatUnits(bal,decimals);
+      if(!fmt.includes('.'))return fmt;
+      const [i,f]=fmt.split('.');
+      const fTrim=(f||'').replace(/0+$/,'');
+      if(!fTrim)return i;
+      const fShort=fTrim.length>10?fTrim.slice(0,10):fTrim;
+      return i+'.'+fShort;
+    }catch{
+      return '—';
+    }
+  })();
+
+  mtSetTokenMeta({symbol:sym,balance:balStr});
+  const resEl=document.getElementById('mt-result');
+  if(resEl)resEl.classList.add('hidden');
+}
+
+function fmt6BigIntForUi(raw){
+  try{
+    const b=BigInt(raw);
+    const int=b/1000000n;
+    const frac=b%1000000n;
+    if(frac===0n) return int.toString();
+    const fracStr=frac.toString().padStart(6,'0').replace(/0+$/,'');
+    return int.toString()+'.'+fracStr;
+  }catch{
+    return String(raw ?? '');
+  }
+}
+
+function to6BigIntFromUi(value){
+  const s=String(value??'').trim();
+  if(!s) return 0n;
+  if(!/^[0-9]+(\.[0-9]+)?$/.test(s)) throw new Error('Invalid number');
+  const [intPart, fracPart=''] = s.split('.');
+  const fracPadded=(fracPart+'000000').slice(0,6);
+  return BigInt(intPart)*1000000n + BigInt(fracPadded);
+}
+
+function openEditToken(token,maxPerOp,maxPerDay){
+  mtResetTokenLimitModal();
+  const title=document.getElementById('modal-token-title');
+  if(title)title.textContent='Edit Token Limit';
+  const addrIn=document.getElementById('mt-token-addr');
+  if(addrIn) addrIn.value=token;
+  const perOpEl=document.getElementById('mt-perOp');
+  if(perOpEl) perOpEl.value=fmt6BigIntForUi(maxPerOp);
+  const perDayEl=document.getElementById('mt-perDay');
+  if(perDayEl) perDayEl.value=fmt6BigIntForUi(maxPerDay);
+  openModal('modal-token');
+  mtLookupTokenMeta();
+}
+
+async function saveTokenLimit(){
+  if(!requireWallet('mt-result')) return;
+
+  const tokenAddr=document.getElementById('mt-token-addr')?.value?.trim()||'';
+  if(!isValidEthAddress(tokenAddr)){
+    showResult('mt-result','Invalid token address.','error');
+    return;
+  }
+
+  const maxPerOpStr=document.getElementById('mt-perOp')?.value?.trim()||'';
+  const maxPerDayStr=document.getElementById('mt-perDay')?.value?.trim()||'';
+  const maxPerOpNum=Number(maxPerOpStr);
+  const maxPerDayNum=Number(maxPerDayStr);
+  if(!maxPerOpStr || !maxPerDayStr || !maxPerOpNum || !maxPerDayNum){
+    showResult('mt-result','Both max per swap and max per day are required.','error');
+    return;
+  }
+  if(!currentKey?.instanceId){
+    showResult('mt-result','No policy instance loaded.','error');
+    return;
+  }
+
+  let maxPerOpBI,maxPerDayBI;
+  try{
+    maxPerOpBI=to6BigIntFromUi(maxPerOpStr);
+    maxPerDayBI=to6BigIntFromUi(maxPerDayStr);
+  }catch{
+    showResult('mt-result','Invalid number format.','error');
+    return;
+  }
+
+  const sym=tokenSymbol(tokenAddr)||'Token';
+  await sendPolicyTx({
+    functionName:'setTokenLimit',
+    args:[currentKey.instanceId, tokenAddr.toLowerCase(), maxPerOpBI, maxPerDayBI],
+    desc:`Set ${sym} limit: $${maxPerOpStr}/swap · $${maxPerDayStr}/day`,
+    onSuccess: async ()=>{
+      closeModal('modal-token');
+      await refreshPolicy();
+      renderPolicy();
+    },
+  });
 }
 
 // Built-in known protocols — always shown regardless of allowedTargets
@@ -1551,9 +1733,36 @@ async function signPendingTx(){
   if(!provider){showResult('ptx-result','Connect your wallet to sign.','warn');showWalletPicker();return}
   try{
     const accounts=await provider.request({method:'eth_requestAccounts'});
+    const from=accounts[0];
     showResult('ptx-result','Waiting for wallet confirmation…','info');
     document.getElementById('ptx-sign-btn').disabled=true;
-    const txHash=await provider.request({method:'eth_sendTransaction',params:[{from:accounts[0],to,data:calldata}]});
+    // Some wallet providers may use a too-high default gasLimit (e.g. 21,000,000),
+    // which can exceed the network/provider cap (cap appears as 16777216).
+    // To make this robust, always pass an explicit gas <= cap.
+    const CAP=16777216n; // from error: cap: 16777216
+    const txReq={from,to,data:calldata};
+
+    let estBig=null;
+    try{
+      const est=await provider.request({method:'eth_estimateGas',params:[txReq]});
+      // est is hex string or number-ish; normalize to bigint
+      estBig=typeof est==='string'?BigInt(est):BigInt(String(est));
+    }catch(_e){
+      estBig=null;
+    }
+
+    // Add 20% buffer if we got an estimate; otherwise use CAP-1 as a safe upper bound.
+    let gasBig=estBig!==null ? (estBig + (estBig/5n)) : (CAP-1n);
+    if(gasBig<=0n) gasBig=CAP-1n;
+    if(gasBig>CAP) gasBig=CAP-1n;
+
+    const gasHex='0x'+gasBig.toString(16);
+    // Use both keys for wallet compatibility.
+    txReq.gas=gasHex;
+    txReq.gasLimit=gasHex;
+
+    showResult('ptx-result',`Gas: ${gasBig.toString()} (est ${estBig!==null?estBig.toString():'n/a'}) — waiting wallet confirmation…`,'info');
+    const txHash=await provider.request({method:'eth_sendTransaction',params:[txReq]});
     showResult('ptx-result','Submitted: '+txHash.slice(0,10)+'… — waiting','info');
     await waitForTx(txHash);
     showResult('ptx-result','✓ Confirmed','info');

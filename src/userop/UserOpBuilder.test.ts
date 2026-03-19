@@ -60,12 +60,19 @@ const INNER_CD   = '0x414bf389' + 'ab'.repeat(228) as `0x${string}`; // fake exa
 const SIGNATURE  = ('0x01' + 'ab'.repeat(32)) as `0x${string}`;
 
 const SPONSOR_RESPONSE = {
-  paymasterAndData:     '0xpaymaster' + 'cd'.repeat(20),
-  preVerificationGas:   '0x5208',
-  verificationGasLimit: '0x186a0',
-  callGasLimit:         '0x186a0',
-  maxFeePerGas:         '0x77359400',
-  maxPriorityFeePerGas: '0x3b9aca00',
+  paymaster:                      '0x' + '11'.repeat(20),
+  paymasterVerificationGasLimit: '0x186a0',
+  paymasterPostOpGasLimit:       '0x186a0',
+  paymasterData:                  '0x' + '22'.repeat(32),
+  preVerificationGas:             '0x5208',
+  verificationGasLimit:          '0x186a0',
+  callGasLimit:                  '0x186a0',
+};
+
+const GAS_PRICE_RESPONSE = {
+  slow:     { maxFeePerGas: '0x1', maxPriorityFeePerGas: '0x1' },
+  standard: { maxFeePerGas: '0x1', maxPriorityFeePerGas: '0x1' },
+  fast:     { maxFeePerGas: '0x77359400', maxPriorityFeePerGas: '0x3b9aca00' },
 };
 
 const USER_OP_HASH = ('0x' + 'ef'.repeat(32)) as `0x${string}`;
@@ -92,6 +99,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n); // nonce = 0
 
+      mockRpc(GAS_PRICE_RESPONSE); // pimlico_getUserOperationGasPrice
       mockRpc(SPONSOR_RESPONSE);   // pm_sponsorUserOperation
       mockRpc(USER_OP_HASH);       // eth_sendUserOperation
       mockRpc({ receipt: { transactionHash: TX_HASH } }); // receipt
@@ -100,7 +108,7 @@ describe('UserOpBuilder', () => {
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
       // Inspect the callData sent to Pimlico
-      const sponsorCall = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+      const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       const userOp = sponsorCall.params[0] as { callData: string };
       const outerCalldata = userOp.callData as `0x${string}`;
 
@@ -125,6 +133,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -132,7 +141,7 @@ describe('UserOpBuilder', () => {
       const builder = makeBuilder();
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
-      const sponsorCall = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+      const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       const callData = sponsorCall.params[0].callData as string;
       const callDataBuf = Buffer.from(callData.slice(2), 'hex');
 
@@ -145,6 +154,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -152,7 +162,7 @@ describe('UserOpBuilder', () => {
       const builder = makeBuilder();
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
-      const sponsorCall = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+      const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       const callData = sponsorCall.params[0].callData as string;
       const callDataBuf = Buffer.from(callData.slice(2), 'hex');
 
@@ -165,6 +175,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -172,7 +183,7 @@ describe('UserOpBuilder', () => {
       const builder = makeBuilder();
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
-      const sponsorCall = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+      const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       const callData = sponsorCall.params[0].callData as string;
       const callDataBuf = Buffer.from(callData.slice(2), 'hex');
 
@@ -189,6 +200,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(7n); // nonce = 7
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -196,7 +208,7 @@ describe('UserOpBuilder', () => {
       const builder = makeBuilder();
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
-      const sponsorCall = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+      const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       const nonce = sponsorCall.params[0].nonce as string;
       expect(hexToBigInt(nonce as `0x${string}`)).toBe(7n);
     });
@@ -209,6 +221,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -216,15 +229,16 @@ describe('UserOpBuilder', () => {
       const builder = makeBuilder();
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
-      const sponsorCall = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+      const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       expect(sponsorCall.method).toBe('pm_sponsorUserOperation');
       expect(sponsorCall.params[1]).toBe('0x0000000071727De22E5E9d8BAf0edAc6f37da032');
     });
 
-    it('paymasterAndData from sponsor response is in the submitted UserOp', async () => {
+    it('paymaster fields from sponsor response are in the submitted UserOp', async () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -232,15 +246,23 @@ describe('UserOpBuilder', () => {
       const builder = makeBuilder();
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
-      const sendCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
+      const sendCall = JSON.parse(mockFetch.mock.calls[2]![1]!.body as string);
       expect(sendCall.method).toBe('eth_sendUserOperation');
-      expect(sendCall.params[0].paymasterAndData).toBe(SPONSOR_RESPONSE.paymasterAndData);
+      expect(sendCall.params[0].paymaster).toBe(SPONSOR_RESPONSE.paymaster);
+      expect(sendCall.params[0].paymasterData).toBe(SPONSOR_RESPONSE.paymasterData);
+      expect(sendCall.params[0].paymasterVerificationGasLimit).toBe(
+        SPONSOR_RESPONSE.paymasterVerificationGasLimit,
+      );
+      expect(sendCall.params[0].paymasterPostOpGasLimit).toBe(
+        SPONSOR_RESPONSE.paymasterPostOpGasLimit,
+      );
     });
 
     it('gas limits are padded by 20%', async () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -248,21 +270,19 @@ describe('UserOpBuilder', () => {
       const builder = makeBuilder();
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
-      const sendCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
-      const accountGasLimits = sendCall.params[0].accountGasLimits as string;
-      const buf = Buffer.from(accountGasLimits.slice(2), 'hex');
-
-      // verificationGasLimit = first 16 bytes
-      const verGas  = BigInt('0x' + buf.slice(0, 16).toString('hex'));
-      // callGasLimit = last 16 bytes
-      const callGas = BigInt('0x' + buf.slice(16, 32).toString('hex'));
+      const sendCall = JSON.parse(mockFetch.mock.calls[2]![1]!.body as string);
 
       const rawVer  = hexToBigInt(SPONSOR_RESPONSE.verificationGasLimit as `0x${string}`);
       const rawCall = hexToBigInt(SPONSOR_RESPONSE.callGasLimit as `0x${string}`);
 
       // 20% padding: padded = raw * 120 / 100
-      expect(verGas).toBe((rawVer  * 120n) / 100n);
-      expect(callGas).toBe((rawCall * 120n) / 100n);
+      const expectedVer = (rawVer * 120n) / 100n;
+      const expectedCall = (rawCall * 120n) / 100n;
+
+      const sentVer = hexToBigInt(sendCall.params[0].verificationGasLimit as `0x${string}`);
+      const sentCall = hexToBigInt(sendCall.params[0].callGasLimit as `0x${string}`);
+      expect(sentVer).toBe(expectedVer);
+      expect(sentCall).toBe(expectedCall);
     });
   });
 
@@ -273,6 +293,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -280,7 +301,7 @@ describe('UserOpBuilder', () => {
       const builder = makeBuilder();
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
-      const sendCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
+      const sendCall = JSON.parse(mockFetch.mock.calls[2]![1]!.body as string);
       expect(sendCall.params[0].signature).toBe(SIGNATURE);
     });
 
@@ -288,6 +309,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -296,7 +318,7 @@ describe('UserOpBuilder', () => {
       await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
 
       // Sponsor call (first fetch) should use dummy sig, NOT the real signature
-      const sponsorCall = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+      const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       expect(sponsorCall.params[0].signature).not.toBe(SIGNATURE);
       // Dummy is 65 zero bytes
       expect(sponsorCall.params[0].signature).toBe('0x' + '00'.repeat(65));
@@ -310,6 +332,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc({ receipt: { transactionHash: TX_HASH } });
@@ -332,6 +355,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
       mockRpc(null);  // first poll: not yet included
@@ -356,6 +380,7 @@ describe('UserOpBuilder', () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n);
 
+      mockRpc(GAS_PRICE_RESPONSE);
       mockRpc(SPONSOR_RESPONSE);
       mockRpc(USER_OP_HASH);
 
