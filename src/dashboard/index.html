@@ -361,6 +361,16 @@
           <div id="settings-save-result" class="alert alert-info hidden mt-16" style="font-size:12px"></div>
         </div>
       </div>
+      <div class="section-header mb-16"><div class="section-title">EIP-7702 Auth</div></div>
+      <div class="card mb-24">
+        <div style="font-size:12px;color:var(--subtle);margin-bottom:12px;line-height:1.6">
+          The EIP-7702 authorization nonce must match the EOA's <code>eth_getTransactionCount</code> at the time the bundler broadcasts. If you sent a direct EOA transaction after onboarding (incrementing the nonce), the stored auth is stale and UserOps will fail. Click below to re-sign with the current nonce.
+        </div>
+        <div class="flex gap-8" style="margin-top:4px">
+          <button class="btn btn-primary btn-sm" id="resign-7702-btn" onclick="refreshEip7702Auth()">Re-sign EIP-7702 auth</button>
+        </div>
+        <div id="resign-7702-status" class="alert alert-info hidden mt-16" style="font-size:12px"></div>
+      </div>
       <div class="section-header mb-16"><div class="section-title">MCP Setup</div></div>
       <div class="card mb-24">
         <div style="font-size:12px;color:var(--subtle);margin-bottom:12px;line-height:1.6">Add Echo Gateway to your AI agent by copying this config into your MCP settings file.</div>
@@ -1739,40 +1749,63 @@ function wallet7702ResponseToBundlerPayload(raw,fallbackAddress,fallbackChainId,
 }
 
 /**
- * Injected wallets usually do not expose `signer.authorize()` to ethers; call vendor RPCs first.
- * Privy embedded wallets route unknown methods to their JSON-RPC proxy (sepolia.rpc.privy.systems)
- * which does not implement wallet_sign7702Authorization — skip all attempts immediately.
+ * Sign an EIP-7702 authorization tuple via the injected wallet.
+ *
+ * Tries in order:
+ *   A. eth_signAuthorization  — MetaMask v12.7+ (Pectra), canonical EIP method
+ *   B. ethers v6 signer.authorize() — wraps eth_signAuthorization; handles normalization
+ *   C. wallet_signAuthorization — Rabby / OKX / viem-style
+ *
+ * The nonce passed here must equal the EOA's current eth_getTransactionCount at the
+ * moment the bundler broadcasts the type-4 tx.  Call this AFTER any nonce-incrementing
+ * on-chain transactions.
  */
 async function sign7702ViaWallet(provider,{delegate,chainId,from}){
   if(window._echoWalletIsPrivy){
-    throw new Error('Privy embedded wallets do not support wallet_sign7702Authorization via their EIP-1193 provider. Use Step 2b · Skip to proceed without eip7702Auth.');
+    throw new Error('Privy embedded wallets do not support EIP-7702 authorization signing via standard browser RPCs.');
   }
   const ncHex=await provider.request({method:'eth_getTransactionCount',params:[from,'pending']});
   const nonce=Number(BigInt(ncHex));
   const chHex='0x'+Number(chainId).toString(16);
   const nHex='0x'+nonce.toString(16);
-  const attempts=[
-    {method:'wallet_sign7702Authorization',params:[{contract:delegate,chain_id:chainId,nonce}]},
-    {method:'wallet_sign7702Authorization',params:[{from,contract:delegate,chain_id:chainId,nonce}]},
-    {method:'wallet_sign7702Authorization',params:[{contractAddress:delegate,chainId,nonce}]},
-    {method:'eth_sign7702Authorization',params:[{contract:delegate,chain_id:chainId,nonce}]},
-    {method:'eth_sign7702Authorization',params:[{from,contract:delegate,chain_id:chainId,nonce}]},
-    {method:'eth_sign7702Authorization',params:[{contractAddress:delegate,chainId,nonce}]},
-    {method:'wallet_sign7702Authorization',params:[{address:delegate,chainId:chHex,nonce:nHex}]},
-    {method:'eth_sign7702Authorization',params:[{address:delegate,chainId:chHex,nonce:nHex}]},
-    /* Some wallets use a generic method name (EIP / viem wording); params vary by vendor */
-    {method:'wallet_signAuthorization',params:[{contractAddress:delegate,chainId,nonce}]},
+
+  // Path A: eth_signAuthorization — MetaMask v12.7+ (EIP-7702 / Pectra)
+  // Params: single object { account, address, chainId (hex), nonce (hex) }
+  try{
+    const raw=await provider.request({
+      method:'eth_signAuthorization',
+      params:[{account:from,address:delegate,chainId:chHex,nonce:nHex}],
+    });
+    return wallet7702ResponseToBundlerPayload(raw,delegate,chainId,nonce);
+  }catch(e){/* not supported by this wallet build — try next path */}
+
+  // Path B: ethers v6 BrowserProvider signer.authorize()
+  // JsonRpcSigner.authorize() calls eth_signAuthorization internally (ethers >= 6.13)
+  try{
+    const ep=new ethers.BrowserProvider(provider);
+    const sg=await ep.getSigner();
+    if(typeof sg.authorize==='function'){
+      const auth=await sg.authorize({address:delegate,chainId:BigInt(chainId),nonce:BigInt(nonce)});
+      return wallet7702ResponseToBundlerPayload(auth,delegate,chainId,nonce);
+    }
+  }catch(e){/* not supported — try next path */}
+
+  // Path C: wallet_signAuthorization — Rabby / OKX (viem EIP-7702 style)
+  const cAttempts=[
+    {method:'wallet_signAuthorization',params:[{account:from,address:delegate,chainId:chHex,nonce:nHex}]},
     {method:'wallet_signAuthorization',params:[{address:delegate,chainId:chHex,nonce:nHex}]},
-    {method:'wallet_signAuthorization',params:[{delegate:delegate,chainId:chHex,nonce:nHex}]},
   ];
   let lastErr;
-  for(const q of attempts){
+  for(const q of cAttempts){
     try{
       const raw=await provider.request(q);
       return wallet7702ResponseToBundlerPayload(raw,delegate,chainId,nonce);
     }catch(e){lastErr=e}
   }
-  throw lastErr??new Error('Wallet does not support EIP-7702 authorization RPCs');
+  throw lastErr??new Error(
+    'Wallet does not support EIP-7702 authorization signing (eth_signAuthorization / wallet_signAuthorization). '+
+    'Update MetaMask to v12.7+ or use "2b · Skip" then paste the auth JSON.'
+  );
 }
 
 function obBuildOnboardingTuple(executeKeyHashHex){
@@ -1908,7 +1941,6 @@ async function obWizardSign7702(){
     const from=accounts[0];
     window._obWizardOwner=from;
     const chainId=Number(gatewayConfig.chainId);
-    /* Do not call ethers signer.authorize() — BrowserProvider’s JsonRpcSigner throws UNSUPPORTED_OPERATION (noise in console / some UIs). */
     let payload=null;
     let rpcErr=null;
     try{
@@ -1979,6 +2011,24 @@ async function obWizardFinish(){
         label:selectedTemplate??'custom',
       })}).then(r=>r.json());
     if(fin.error)throw new Error(fin.error);
+    // The on-chain tx in Step 3 incremented the EOA nonce.
+    // Re-sign the auth NOW so the stored nonce matches the current eth_getTransactionCount.
+    // (An auth signed in Step 2 with nonce N is invalidated when the EOA's nonce becomes N+1.)
+    if(window._echoProvider&&!window._echoWalletIsPrivy){
+      try{
+        const delegate=gatewayConfig.contracts.echoDelegationModule;
+        const chainId=Number(gatewayConfig.chainId);
+        const freshAuth=await sign7702ViaWallet(window._echoProvider,{delegate,chainId,from:owner});
+        obEip7702Auth=freshAuth;
+        document.getElementById('ob-wiz-s4').textContent=' ✓ (auth refreshed)';
+      }catch(e){
+        showOb(
+          'Warning: EIP-7702 auth re-sign failed after on-chain tx — '+(e.message||String(e))+
+          '. The stored auth may have a stale nonce. Use Settings → Re-sign EIP-7702 auth to fix later.',
+          'info'
+        );
+      }
+    }
     await fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({instanceId:obChainInstanceId,...(obEip7702Auth?{eip7702Auth:obEip7702Auth}:{})})});
     document.getElementById('ob-wiz-s4').textContent=' ✓';
@@ -1992,6 +2042,53 @@ async function obWizardFinish(){
   }catch(err){
     showOb(err.message??String(err),'error');
     if(btn){btn.disabled=false;btn.textContent='4 · Finish & open Dashboard'}
+  }
+}
+
+/** Re-sign the EIP-7702 auth for the active account with the current EOA nonce.
+ *  Called from Settings → EIP-7702 Auth section when auth nonce has gone stale. */
+async function refreshEip7702Auth(){
+  const btn=document.getElementById('resign-7702-btn');
+  const status=document.getElementById('resign-7702-status');
+  if(btn)btn.disabled=true;
+  if(status){status.textContent='';status.className='alert alert-info hidden mt-16';}
+  try{
+    if(!window._echoProvider){
+      // Try to connect wallet first
+      if(window.ethereum){
+        window._echoProvider=window.ethereum;
+        await window._echoProvider.request({method:'eth_requestAccounts'});
+      }else{
+        throw new Error('No wallet connected — connect your wallet first.');
+      }
+    }
+    if(!gatewayConfig?.contracts?.echoDelegationModule){
+      throw new Error('Gateway config not loaded — refresh the page.');
+    }
+    const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
+    const from=accounts[0];
+    await ensureWalletChain();
+    const delegate=gatewayConfig.contracts.echoDelegationModule;
+    const chainId=Number(gatewayConfig.chainId);
+    const freshAuth=await sign7702ViaWallet(window._echoProvider,{delegate,chainId,from});
+    // Fetch current active instanceId from context
+    const ctx=await fetch('/api/context').then(r=>r.json()).catch(()=>({}));
+    const instanceId=ctx?.instanceId??ctx?.activeInstanceId;
+    if(!instanceId)throw new Error('No active instanceId in context — complete onboarding first.');
+    const res=await fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({instanceId,eip7702Auth:freshAuth})}).then(r=>r.json());
+    if(res?.error)throw new Error(res.error);
+    if(status){
+      status.textContent='✓ EIP-7702 auth refreshed (nonce '+Number(BigInt(freshAuth.nonce))+') — saved to context.';
+      status.className='alert alert-info mt-16';
+    }
+  }catch(e){
+    if(status){
+      status.textContent='Error: '+(e.message||String(e));
+      status.className='alert alert-error mt-16';
+    }
+  }finally{
+    if(btn)btn.disabled=false;
   }
 }
 
