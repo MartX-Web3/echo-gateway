@@ -645,10 +645,17 @@
   <!-- Step: choose wallet type -->
   <div id="privy-step-choose">
     <p style="font-size:11px;color:var(--subtle);line-height:1.55;margin:0 0 16px">Choose how to connect. MetaMask / Rabby / OKX support EIP-7702 signing directly — recommended for onboarding.</p>
-    <button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="connectInjectedWallet()">Browser Wallet (MetaMask / Rabby / OKX)</button>
+    <button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="showWalletList()">Browser Wallet (MetaMask / Rabby / OKX…)</button>
     <div style="text-align:center;font-size:11px;color:var(--subtle);margin:8px 0">— or —</div>
     <button class="btn btn-ghost" style="width:100%" onclick="privyShowStep('email')">Email login (Privy embedded wallet)</button>
     <div id="privy-choose-msg" class="hidden mt-16" style="font-size:11px"></div>
+  </div>
+  <!-- Step: wallet list (EIP-6963 discovery) -->
+  <div id="privy-step-wallets" class="hidden">
+    <button class="btn btn-ghost btn-sm" style="margin-bottom:12px" onclick="privyShowStep('choose')">← Back</button>
+    <p style="font-size:11px;color:var(--subtle);line-height:1.55;margin:0 0 12px">Detected wallets — click one to connect.</p>
+    <div id="wallet-list" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div id="wallet-list-msg" class="hidden mt-16" style="font-size:11px"></div>
   </div>
   <!-- Step: email input -->
   <div id="privy-step-email" class="hidden">
@@ -1079,32 +1086,99 @@ function showWalletPicker(){
 }
 
 function privyShowStep(step){
-  ['choose','email','otp','loading'].forEach(s=>{
+  ['choose','wallets','email','otp','loading'].forEach(s=>{
     const el=document.getElementById('privy-step-'+s);
     if(el)el.classList.toggle('hidden',s!==step);
   });
 }
 
-async function connectInjectedWallet(){
-  const msgEl=document.getElementById('privy-choose-msg');
-  const btn=document.querySelector('#privy-step-choose .btn-primary');
-  if(!window.ethereum){
-    if(msgEl){msgEl.textContent='No browser wallet detected — install MetaMask or Rabby first.';msgEl.className='alert alert-error mt-16';}
+/** Collect all EIP-6963 providers + known legacy window.* providers. */
+function discoverWallets(){
+  return new Promise(resolve=>{
+    const found=new Map(); // rdns/key → {name, icon, provider}
+
+    // EIP-6963: broadcast requestProvider and collect announcements for 300 ms
+    const handler=e=>{
+      const {info,provider}=e.detail??{};
+      if(!info||!provider)return;
+      found.set(info.rdns??info.name,{name:info.name,icon:info.icon??null,provider});
+    };
+    window.addEventListener('eip6963:announceProvider',handler);
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+    setTimeout(()=>{
+      window.removeEventListener('eip6963:announceProvider',handler);
+
+      // Legacy fallbacks — wallets that haven't implemented EIP-6963
+      const legacy=[
+        {key:'okx',    name:'OKX Wallet',      win:'okxwallet'},
+        {key:'okex',   name:'OKX Wallet',       win:'okex'},
+        {key:'trust',  name:'Trust Wallet',     win:'trustwallet'},
+        {key:'cb',     name:'Coinbase Wallet',  win:'coinbaseWalletExtension'},
+        {key:'brave',  name:'Brave Wallet',     win:'ethereum',   flag:'isBraveWallet'},
+        {key:'mm',     name:'MetaMask',         win:'ethereum',   flag:'isMetaMask'},
+        {key:'rabby',  name:'Rabby',            win:'ethereum',   flag:'isRabby'},
+        {key:'eth',    name:'Browser Wallet',   win:'ethereum'},
+      ];
+      for(const l of legacy){
+        const p=window[l.win];
+        if(!p)continue;
+        if(l.flag&&!p[l.flag])continue;
+        const key='legacy:'+l.key;
+        if(!found.has(key))found.set(key,{name:l.name,icon:null,provider:p});
+      }
+
+      // De-duplicate by provider object reference (same provider, different keys)
+      const seen=new Set();
+      const result=[];
+      for(const v of found.values()){
+        if(!seen.has(v.provider)){seen.add(v.provider);result.push(v);}
+      }
+      resolve(result);
+    },300);
+  });
+}
+
+async function showWalletList(){
+  privyShowStep('wallets');
+  const listEl=document.getElementById('wallet-list');
+  const msgEl=document.getElementById('wallet-list-msg');
+  listEl.innerHTML='<div style="font-size:11px;color:var(--subtle)">Detecting wallets…</div>';
+  msgEl.className='hidden';
+
+  const wallets=await discoverWallets();
+  if(!wallets.length){
+    listEl.innerHTML='';
+    msgEl.textContent='No browser wallets detected. Install MetaMask, OKX Wallet, or Rabby and refresh.';
+    msgEl.className='alert alert-error mt-16';
     return;
   }
-  if(btn)btn.disabled=true;
+  listEl.innerHTML='';
+  wallets.forEach((w,i)=>{
+    const btn=document.createElement('button');
+    btn.className='btn btn-ghost';
+    btn.style.cssText='width:100%;justify-content:flex-start;gap:10px;padding:10px 12px;text-align:left';
+    const iconHtml=w.icon
+      ?`<img src="${w.icon}" style="width:24px;height:24px;border-radius:6px;flex-shrink:0" />`
+      :`<div style="width:24px;height:24px;border-radius:6px;background:var(--border);flex-shrink:0"></div>`;
+    btn.innerHTML=iconHtml+`<span style="font-size:13px">${w.name}</span>`;
+    btn.onclick=()=>connectWalletProvider(w.provider,w.name,msgEl);
+    listEl.appendChild(btn);
+  });
+}
+
+async function connectWalletProvider(provider,name,msgEl){
   try{
-    const accounts=await window.ethereum.request({method:'eth_requestAccounts'});
+    const accounts=await provider.request({method:'eth_requestAccounts'});
     const addr=accounts[0];
     if(!addr)throw new Error('No account returned from wallet.');
-    window._echoProvider=window.ethereum;
+    window._echoProvider=provider;
     window._echoWalletIsPrivy=false;
-    window._echoWalletName='Browser Wallet';
+    window._echoWalletName=name;
     closeModal('modal-privy');
-    obOnWalletConnected(addr,'Browser Wallet');
+    obOnWalletConnected(addr,name);
   }catch(e){
     if(msgEl){msgEl.textContent='Connection failed: '+(e.message||String(e));msgEl.className='alert alert-error mt-16';}
-    if(btn)btn.disabled=false;
   }
 }
 function privySetMsg(id,msg,type){
@@ -1784,14 +1858,16 @@ function wallet7702ResponseToBundlerPayload(raw,fallbackAddress,fallbackChainId,
 /**
  * Sign an EIP-7702 authorization tuple via the injected wallet.
  *
- * Tries in order:
- *   A. eth_signAuthorization  — MetaMask v12.7+ (Pectra), canonical EIP method
- *   B. ethers v6 signer.authorize() — wraps eth_signAuthorization; handles normalization
- *   C. wallet_signAuthorization — Rabby / OKX / viem-style
+ * Attempts (in order):
+ *   A1. eth_signAuthorization {chainId,address,nonce}         — MetaMask v12.7+ documented format
+ *   A2. eth_signAuthorization {chainId,contractAddress,nonce} — alt field name seen in some builds
+ *   A3. eth_signAuthorization {account,chainId,address,nonce} — with explicit account
+ *   B.  ethers v6 signer.authorize()                          — wraps eth_signAuthorization (>=6.13)
+ *   C1. wallet_signAuthorization {account,address,chainId,nonce} — Rabby / OKX
+ *   C2. wallet_signAuthorization {address,chainId,nonce}
  *
- * The nonce passed here must equal the EOA's current eth_getTransactionCount at the
- * moment the bundler broadcasts the type-4 tx.  Call this AFTER any nonce-incrementing
- * on-chain transactions.
+ * Throws a diagnostic string listing every attempt and its error so the caller
+ * can surface exactly what the wallet rejected.
  */
 async function sign7702ViaWallet(provider,{delegate,chainId,from}){
   if(window._echoWalletIsPrivy){
@@ -1802,43 +1878,46 @@ async function sign7702ViaWallet(provider,{delegate,chainId,from}){
   const chHex='0x'+Number(chainId).toString(16);
   const nHex='0x'+nonce.toString(16);
 
-  // Path A: eth_signAuthorization — MetaMask v12.7+ (EIP-7702 / Pectra)
-  // Params: single object { account, address, chainId (hex), nonce (hex) }
-  try{
-    const raw=await provider.request({
-      method:'eth_signAuthorization',
-      params:[{account:from,address:delegate,chainId:chHex,nonce:nHex}],
-    });
-    return wallet7702ResponseToBundlerPayload(raw,delegate,chainId,nonce);
-  }catch(e){/* not supported by this wallet build — try next path */}
+  const log=[];  // collect per-attempt errors for diagnostics
 
-  // Path B: ethers v6 BrowserProvider signer.authorize()
-  // JsonRpcSigner.authorize() calls eth_signAuthorization internally (ethers >= 6.13)
+  // ── Paths A1-A3: eth_signAuthorization ─────────────────────────────────
+  const aParams=[
+    {chainId:chHex,address:delegate,nonce:nHex},                          // A1 — no account field (MetaMask docs)
+    {chainId:chHex,contractAddress:delegate,nonce:nHex},                  // A2 — contractAddress variant
+    {account:from,chainId:chHex,address:delegate,nonce:nHex},             // A3 — explicit account
+  ];
+  for(const p of aParams){
+    try{
+      const raw=await provider.request({method:'eth_signAuthorization',params:[p]});
+      return wallet7702ResponseToBundlerPayload(raw,delegate,chainId,nonce);
+    }catch(e){log.push('eth_signAuthorization('+JSON.stringify(p)+'): '+(e?.message??String(e)))}
+  }
+
+  // ── Path B: ethers v6 signer.authorize() ────────────────────────────────
   try{
     const ep=new ethers.BrowserProvider(provider);
     const sg=await ep.getSigner();
     if(typeof sg.authorize==='function'){
       const auth=await sg.authorize({address:delegate,chainId:BigInt(chainId),nonce:BigInt(nonce)});
       return wallet7702ResponseToBundlerPayload(auth,delegate,chainId,nonce);
+    }else{
+      log.push('ethers signer.authorize: method not present in this build (ethers '+ethers.version+')');
     }
-  }catch(e){/* not supported — try next path */}
+  }catch(e){log.push('ethers signer.authorize: '+(e?.message??String(e)))}
 
-  // Path C: wallet_signAuthorization — Rabby / OKX (viem EIP-7702 style)
-  const cAttempts=[
-    {method:'wallet_signAuthorization',params:[{account:from,address:delegate,chainId:chHex,nonce:nHex}]},
-    {method:'wallet_signAuthorization',params:[{address:delegate,chainId:chHex,nonce:nHex}]},
+  // ── Paths C1-C2: wallet_signAuthorization ────────────────────────────────
+  const cParams=[
+    {account:from,address:delegate,chainId:chHex,nonce:nHex},
+    {address:delegate,chainId:chHex,nonce:nHex},
   ];
-  let lastErr;
-  for(const q of cAttempts){
+  for(const p of cParams){
     try{
-      const raw=await provider.request(q);
+      const raw=await provider.request({method:'wallet_signAuthorization',params:[p]});
       return wallet7702ResponseToBundlerPayload(raw,delegate,chainId,nonce);
-    }catch(e){lastErr=e}
+    }catch(e){log.push('wallet_signAuthorization('+JSON.stringify(p)+'): '+(e?.message??String(e)))}
   }
-  throw lastErr??new Error(
-    'Wallet does not support EIP-7702 authorization signing (eth_signAuthorization / wallet_signAuthorization). '+
-    'Update MetaMask to v12.7+ or use "2b · Skip" then paste the auth JSON.'
-  );
+
+  throw new Error('EIP-7702 signing failed — all attempts rejected:\n'+log.map((l,i)=>'  ['+(i+1)+'] '+l).join('\n'));
 }
 
 function obBuildOnboardingTuple(executeKeyHashHex){
@@ -1980,18 +2059,22 @@ async function obWizardSign7702(){
       payload=await sign7702ViaWallet(window._echoProvider,{delegate,chainId,from});
     }catch(e){rpcErr=e}
     if(!payload){
-      const isPrivy=window._echoWalletIsPrivy;
-      const hint=(rpcErr&&(rpcErr.message||String(rpcErr))&&!isPrivy)?` Wallet: ${rpcErr.message||String(rpcErr)}`:'';
-      if(isPrivy){
+      if(window._echoWalletIsPrivy){
         showOb(
-          'Privy embedded wallets do not support EIP-7702 authorization signing via standard browser RPCs — ' +
-          'wallet_sign7702Authorization is a wallet-side method that Privy\'s iframe has not yet implemented. ' +
-          'Click "2b · Skip" to continue to the on-chain step without eip7702Auth. ' +
-          'If your bundler later requires it, add it via POST /api/context.',
+          'Privy embedded wallets do not support EIP-7702 authorization signing. '+
+          'Click "2b · Skip" to continue without eip7702Auth, or connect MetaMask / Rabby instead.',
           'info'
         );
       }else{
-        showOb('This is a limitation of the injected wallet extension, not your Sepolia RPC URL in .env: Step 2 uses ethereum.request(…) handled inside the browser extension — it is not sent to Infura/Alchemy. Trust / older MetaMask builds often omit or reject wallet_sign7702Authorization. Update MetaMask, confirm Sepolia supports 7702 for your build, or use Step 2b · Skip then paste eip7702Auth or POST /api/context.'+hint,'info');
+        // rpcErr.message now contains the full per-attempt diagnostic log
+        const detail=rpcErr?(rpcErr.message||String(rpcErr)):'(no error returned)';
+        showOb(
+          'Your wallet rejected all EIP-7702 signing attempts. Diagnostic:\n\n'+detail+
+          '\n\nIf all lines say "method not found": your MetaMask is older than v12.7 — update it. '+
+          'If any line says "invalid params": copy the exact error and report it. '+
+          'You can also click "2b · Skip" then paste a pre-signed auth JSON.',
+          'error'
+        );
       }
       document.getElementById('ob-btn-onchain').disabled=false;
       return;
@@ -2087,13 +2170,7 @@ async function refreshEip7702Auth(){
   if(status){status.textContent='';status.className='alert alert-info hidden mt-16';}
   try{
     if(!window._echoProvider){
-      // Try to connect wallet first
-      if(window.ethereum){
-        window._echoProvider=window.ethereum;
-        await window._echoProvider.request({method:'eth_requestAccounts'});
-      }else{
-        throw new Error('No wallet connected — connect your wallet first.');
-      }
+      throw new Error('No wallet connected — go to Settings and connect your wallet first, or reconnect via Onboarding.');
     }
     if(!gatewayConfig?.contracts?.echoDelegationModule){
       throw new Error('Gateway config not loaded — refresh the page.');
