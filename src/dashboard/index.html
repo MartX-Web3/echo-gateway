@@ -414,13 +414,13 @@
 
       <!-- STEP 1: Connect wallet -->
       <div id="ob-panel-1">
-        <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Log in with Privy</h2>
+        <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Connect wallet</h2>
         <p style="font-size:12px;color:var(--subtle);margin-bottom:24px;line-height:1.7">
-          Sign in with your email — Privy creates an embedded EOA wallet (no browser extension needed).
+          Connect MetaMask / Rabby / OKX for full EIP-7702 support (recommended), or log in with email via Privy.
           This EOA will be <code>UserOperation.sender</code>; hold tokens and SwapRouter approvals here.
         </p>
         <button class="btn btn-primary" id="ob-connect-btn" onclick="showWalletPicker()" style="padding:10px 20px">
-          Log in with Privy
+          Connect wallet
         </button>
         <div id="ob-wallet-connected" class="hidden mt-16">
           <div class="card card-sm" style="display:flex;align-items:center;gap:12px">
@@ -624,8 +624,8 @@
       <img id="connect-logo-img" src="/assets/logo-dark.png"
         style="width:48px;height:48px;border-radius:12px;object-fit:contain;margin:0 auto 20px;display:block" />
       <div style="font-size:20px;font-weight:300;margin-bottom:8px">Log in to Echo</div>
-      <div style="font-size:12px;color:var(--subtle);line-height:1.7;margin-bottom:24px">Sign in with your email to create or access your embedded wallet (no browser extension needed).</div>
-      <button class="btn btn-primary" onclick="showWalletPicker()" style="width:100%;justify-content:center;padding:10px">Log in with Privy</button>
+      <div style="font-size:12px;color:var(--subtle);line-height:1.7;margin-bottom:24px">Connect MetaMask / Rabby for EIP-7702 support, or sign in with email via Privy.</div>
+      <button class="btn btn-primary" onclick="showWalletPicker()" style="width:100%;justify-content:center;padding:10px">Connect wallet</button>
       <div id="connect-error" class="alert alert-error hidden mt-16" style="text-align:left"></div>
     </div>
   </div>
@@ -641,9 +641,18 @@
 <!-- MODALS -->
 <div class="modal-overlay" id="modal-account-rename"><div class="modal" style="width:320px"><div class="modal-header"><div class="modal-title" id="modal-account-rename-title">Rename account</div><button class="modal-close" onclick="closeModal('modal-account-rename')">×</button></div><div class="field"><label>Account name</label><input type="text" id="modal-account-rename-input" maxlength="40" placeholder="e.g. Trading Bot, Research"/><div class="field-hint">Only stored locally in this browser.</div></div><div class="flex gap-8" style="margin-top:16px"><button class="btn btn-primary" onclick="saveRenameAccount()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-account-rename')">Cancel</button></div></div></div>
 <div class="modal-overlay" id="modal-privy"><div class="modal" style="width:380px">
-  <div class="modal-header"><div class="modal-title">Log in with Privy</div><button class="modal-close" onclick="closeModal('modal-privy')">×</button></div>
+  <div class="modal-header"><div class="modal-title">Connect wallet</div><button class="modal-close" onclick="closeModal('modal-privy')">×</button></div>
+  <!-- Step: choose wallet type -->
+  <div id="privy-step-choose">
+    <p style="font-size:11px;color:var(--subtle);line-height:1.55;margin:0 0 16px">Choose how to connect. MetaMask / Rabby / OKX support EIP-7702 signing directly — recommended for onboarding.</p>
+    <button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="connectInjectedWallet()">Browser Wallet (MetaMask / Rabby / OKX)</button>
+    <div style="text-align:center;font-size:11px;color:var(--subtle);margin:8px 0">— or —</div>
+    <button class="btn btn-ghost" style="width:100%" onclick="privyShowStep('email')">Email login (Privy embedded wallet)</button>
+    <div id="privy-choose-msg" class="hidden mt-16" style="font-size:11px"></div>
+  </div>
   <!-- Step: email input -->
-  <div id="privy-step-email">
+  <div id="privy-step-email" class="hidden">
+    <button class="btn btn-ghost btn-sm" style="margin-bottom:12px" onclick="privyShowStep('choose')">← Back</button>
     <p style="font-size:11px;color:var(--subtle);line-height:1.55;margin:0 0 16px">Enter your email — Privy will send a one-time code. Your embedded wallet (EOA) is created automatically.</p>
     <div class="field"><label>Email address</label><input type="email" id="privy-email" placeholder="you@example.com" autocomplete="email" onkeydown="if(event.key==='Enter')privySendCode()" /></div>
     <div id="privy-email-msg" class="hidden mb-16"></div>
@@ -1059,20 +1068,44 @@ async function migrateLegacyAccount(){
 }
 
 function showWalletPicker(){
-  // Reset modal state
-  privyShowStep('email');
+  // Reset modal state and show wallet-type chooser
   document.getElementById('privy-email').value='';
   document.getElementById('privy-otp').value='';
   document.getElementById('privy-email-msg').classList.add('hidden');
   document.getElementById('privy-otp-msg').classList.add('hidden');
+  document.getElementById('privy-choose-msg').classList.add('hidden');
+  privyShowStep('choose');
   openModal('modal-privy');
 }
 
 function privyShowStep(step){
-  ['email','otp','loading'].forEach(s=>{
+  ['choose','email','otp','loading'].forEach(s=>{
     const el=document.getElementById('privy-step-'+s);
     if(el)el.classList.toggle('hidden',s!==step);
   });
+}
+
+async function connectInjectedWallet(){
+  const msgEl=document.getElementById('privy-choose-msg');
+  const btn=document.querySelector('#privy-step-choose .btn-primary');
+  if(!window.ethereum){
+    if(msgEl){msgEl.textContent='No browser wallet detected — install MetaMask or Rabby first.';msgEl.className='alert alert-error mt-16';}
+    return;
+  }
+  if(btn)btn.disabled=true;
+  try{
+    const accounts=await window.ethereum.request({method:'eth_requestAccounts'});
+    const addr=accounts[0];
+    if(!addr)throw new Error('No account returned from wallet.');
+    window._echoProvider=window.ethereum;
+    window._echoWalletIsPrivy=false;
+    window._echoWalletName='Browser Wallet';
+    closeModal('modal-privy');
+    obOnWalletConnected(addr,'Browser Wallet');
+  }catch(e){
+    if(msgEl){msgEl.textContent='Connection failed: '+(e.message||String(e));msgEl.className='alert alert-error mt-16';}
+    if(btn)btn.disabled=false;
+  }
 }
 function privySetMsg(id,msg,type){
   const el=document.getElementById(id);if(!el)return;
