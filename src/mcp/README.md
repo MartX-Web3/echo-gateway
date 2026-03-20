@@ -2,13 +2,13 @@
 
 The MCP Server is the agent-facing interface of Echo Gateway. It exposes Echo Protocol's permission and execution layer as [Model Context Protocol](https://modelcontextprotocol.io) tools, allowing any MCP-compatible agent framework (OpenClaw, LangChain, custom bots) to interact with DeFi protocols within user-defined on-chain boundaries.
 
-The MCP layer is **smart-account centric**:
+The MCP layer is **policy-context centric** (EOA as `UserOp.sender`, EIP-7702):
 
-- Users start by opening the local **Echo Gateway dashboard** after launching the process.
-- The dashboard handles onboarding: connect an EOA wallet, deploy an Echo smart account, and create a policy instance using a **default policy template** (no need to tune every limit at first).
-- Each entry in the dashboard represents one smart account, its bound owner wallet, its active policy instance (and address), and its recent activity.
-- Users can switch between smart accounts in the sidebar, similar to switching wallets in MetaMask.
-- The MCP tools operate in the context of the **currently selected smart account / policy instance**. Agents simply call tools; they do not need to manage policy templates directly.
+- Users open the local **Echo Gateway dashboard** after launching the process.
+- Onboarding: connect an EOA, complete on-chain registration via **echo-contracts**, then link **instance ID** + local execute key. Optional: persist **`eip7702Auth`** in `context.json` / `POST /api/context` for Pimlico.
+- Each entry is a policy instance bound to the user **EOA** (swap recipient = same address).
+- Users switch contexts in the sidebar like wallets in MetaMask.
+- MCP tools use the **currently selected context**. Agents call tools; they do not manage policy templates directly.
 
 ## How it fits in
 
@@ -62,9 +62,9 @@ Use this when the user is present and commanding a one-off swap. Each call requi
 
 **Lifecycle**
 1. PreValidator Stage 1 — checks policy limits against on-chain state
-2. UniswapV3Tool — gets quote, builds calldata (recipient hardcoded to AccountERC7579)
+2. UniswapV3Tool — gets quote, builds calldata (recipient hardcoded to user EOA)
 3. PreValidator Stage 2 — verifies calldata structure (target, selector, recipient, amount)
-4. KeyStore.buildRealtimeSig — assembles `[0x01][executeKey]` signature
+4. KeyStore.buildRealtimeSig — assembles `[0x03][executeKey]` signature (7702 / validateFor7702)
 5. UserOpBuilder — builds and submits UserOperation via Pimlico
 
 ---
@@ -249,7 +249,7 @@ Emergency pause — stops all agent operations immediately without revoking the 
 | Property | How the MCP layer enforces it |
 |---|---|
 | S1 — No bypass of policy | PreValidator runs before and after every tool call. The on-chain Validator is always the final authority. |
-| S2 — recipient == AccountERC7579 | UniswapV3Tool hardcodes recipient. PreValidator Stage 2 independently re-checks it before signing. |
+| S2 — recipient == user EOA | UniswapV3Tool hardcodes recipient. PreValidator Stage 2 independently re-checks it before signing. |
 | S3 — totalSpent append-only | MCP layer is read-only with respect to spend counters. Only `recordSpend()` (onlyValidator on-chain) can increment them. |
 | S4 — only owner modifies policy | MCP-05/06/07 require the user's wallet to sign the on-chain transaction. The gateway cannot sign on behalf of the owner. |
 
@@ -282,7 +282,7 @@ Common error codes (from PreValidator):
 | `SESSION_BUDGET_EXHAUSTED` | Session's totalBudget fully spent |
 | `SESSION_DAILY_OPS_EXCEEDED` | maxOpsPerDay reached — try again tomorrow |
 | `TARGET_NOT_ALLOWED` | Protocol not in allowedTargets whitelist |
-| `RECIPIENT_MISMATCH` | Internal error — recipient was not AccountERC7579 |
+| `RECIPIENT_MISMATCH` | Internal error — recipient was not the configured user EOA |
 
 ---
 

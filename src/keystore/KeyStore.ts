@@ -251,8 +251,8 @@ export class KeyStore {
   /**
    * Build the real-time mode signature bytes for a UserOperation.
    *
-   * Format: [0x01][rawExecuteKey (32 bytes)] = 33 bytes total
-   * Matches EchoPolicyValidator MODE_REALTIME = 0x01
+   * Format: [0x03][rawExecuteKey (32 bytes)] = 33 bytes total
+   * EIP-7702 / validateFor7702: realtime ExecuteKey prefix (rejects 0x01 on this path).
    */
   buildRealtimeSig(instanceId: string): `0x${string}` {
     this._assertUnlocked();
@@ -261,7 +261,7 @@ export class KeyStore {
 
     const keyBytes = toBytes(rawKey);              // 32 bytes
     const sig      = new Uint8Array(33);
-    sig[0]         = 0x01;                         // MODE_REALTIME
+    sig[0]         = 0x03;                         // realtime ExecuteKey (7702 validator path)
     sig.set(keyBytes, 1);
     return toHex(sig) as `0x${string}`;
   }

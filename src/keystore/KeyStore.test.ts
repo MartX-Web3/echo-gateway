@@ -222,7 +222,7 @@ describe('KeyStore', () => {
 
   // ── Signature builders ────────────────────────────────────────────────────
 
-  it('buildRealtimeSig produces 33-byte sig starting with 0x01', async () => {
+  it('buildRealtimeSig produces 33-byte sig starting with 0x03 (7702 / validateFor7702)', async () => {
     const ks = new KeyStore(testPath());
     await ks.unlock(PASSPHRASE);
     await ks.addKey(INSTANCE_ID, 'execute', 'agent');
@@ -232,8 +232,7 @@ describe('KeyStore', () => {
 
     // 33 bytes total: 1 mode byte + 32 key bytes
     expect(sigBytes).toHaveLength(33);
-    // First byte = MODE_REALTIME = 0x01
-    expect(sigBytes[0]).toBe(0x01);
+    expect(sigBytes[0]).toBe(0x03);
   });
 
   it('buildRealtimeSig embeds the correct rawKey', async () => {

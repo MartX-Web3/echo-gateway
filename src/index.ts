@@ -17,10 +17,12 @@
  *   npx tsx src/index.ts
  *
  * Environment:
- *   Copy .env.example → .env and fill in all values before running.
+ *   Copy .env.example → .env in the project root (same cwd as `npm run dev`).
+ *   Values are loaded automatically from `.env` on startup (existing OS env wins).
  */
 
 import { createInterface } from 'node:readline';
+import { loadDotEnv } from './config/loadDotEnv.js';
 import { loadConfig }  from './config/index.js';
 import { KeyStore }    from './keystore/KeyStore.js';
 import { McpServer }   from './mcp/McpServer.js';
@@ -71,6 +73,8 @@ function printReady(port: number): void {
 
 async function main(): Promise<void> {
   printBanner();
+
+  loadDotEnv();
 
   // 1. Load config
   let config;

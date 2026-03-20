@@ -16,6 +16,7 @@
  * Transport: stdio (default for OpenClaw local MCP)
  */
 
+import { readFileSync, existsSync } from 'node:fs';
 import { Server }   from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -30,6 +31,7 @@ import { KeyStore }      from '../keystore/KeyStore.js';
 import { UniswapV3Tool }  from '../tools/UniswapV3Tool.js';
 import { PreValidator }   from '../validation/PreValidator.js';
 import { UserOpBuilder }  from '../userop/UserOpBuilder.js';
+import type { BundlerEip7702Auth } from '../userop/UserOpBuilder.js';
 import { POLICY_REGISTRY_ABI } from '../contracts/PolicyRegistryABI.js';
 import type { GatewayConfig }  from '../config/index.js';
 import type {
@@ -421,13 +423,8 @@ export class McpServer {
   // ── Private helpers ────────────────────────────────────────────────────
 
   /**
-   * Look up the AccountERC7579 address for a given instanceId.
-   * The instance owner is stored in PolicyRegistry — the account address
-   * is not stored there directly. For MVP, we read it from KeyStore metadata
-   * where it was stored during account creation.
-   *
-   * TODO: EchoAccountFactory emits AccountCreated(account, owner, instanceId).
-   * Index this event to get the account address deterministically.
+   * Resolve UserOp.sender (user EOA) for a PolicyInstance from KeyStore label `account:0x...`.
+   * Token balances and SwapRouter approvals must be on this EOA.
    */
   // ── MCP-00: echo_get_context ──────────────────────────────────────────
   private _getContext() {
@@ -444,6 +441,7 @@ export class McpServer {
         network:        'sepolia',
         chainId:        this.config.chainId,
         policyRegistry: this.config.contracts.policyRegistry,
+        echoDelegationModule: this.config.contracts.echoDelegationModule,
       };
     } catch (err) {
       return { error: true, reason: err instanceof Error ? err.message : String(err) };
@@ -466,40 +464,56 @@ export class McpServer {
     // Fallback: first registered key
     const keys = this.keyStore.listKeys('execute');
     if (keys.length === 0) throw new Error(
-      'No Echo Account found. Open http://127.0.0.1:18790 and connect your wallet.'
+      'No Echo context found. Open the Dashboard and link your policy instance (EOA).'
     );
     return keys[0]!.id as Hex;
   }
 
+  /** User EOA — UserOperation.sender (must match EIP-7702 registration + token balances/allowances). */
   private async _getAccountAddress(instanceId: Hex): Promise<Address> {
     const meta = this.keyStore.getKeyMeta(instanceId);
     if (!meta) {
       throw new Error(
         `No execute key found for instanceId=${instanceId}. ` +
-        `Is the gateway unlocked and the account registered?`
+        `Is the gateway unlocked and the instance registered?`
       );
     }
-    // Account address stored as part of key label: "account:0x..."
+    // Sender EOA stored in key label: "account:0x..." (same as swap recipient)
     const match = meta.label.match(/account:(0x[0-9a-fA-F]{40})/);
     if (!match?.[1]) {
       throw new Error(
-        `Cannot determine account address for instanceId=${instanceId}. ` +
-        `Key label does not contain account address. Expected format: "account:0x..."`
+        `Cannot determine EOA address for instanceId=${instanceId}. ` +
+        `Key label must include "account:0x..." (UserOp.sender).`
       );
     }
     return match[1] as Address;
   }
 
   /**
+   * Optional `eip7702Auth` from context.json (written by Dashboard / tooling).
+   * Required by Pimlico when sender is a 7702 EOA; delegate address must be EchoDelegationModule.
+   */
+  private _readContextEip7702Auth(): BundlerEip7702Auth | undefined {
+    try {
+      const ctxPath = this.keyStore.path.replace('keystore.json', 'context.json');
+      if (!existsSync(ctxPath)) return undefined;
+      const raw = JSON.parse(readFileSync(ctxPath, 'utf8')) as { eip7702Auth?: BundlerEip7702Auth };
+      return raw.eip7702Auth;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Build and submit a UserOperation via Pimlico.
-   * Uses Pimlico Verifying Paymaster — user does not need ETH in AccountERC7579.
+   * Uses Pimlico Verifying Paymaster — user does not need ETH on the EOA for gas when sponsored.
    */
   private async _submitUserOp(
     account:   Address,
     calldata:  Hex,
     signature: Hex,
   ): Promise<{ userOpHash: Hex; txHash: Hex }> {
-    // UserOpBuilder wraps calldata in AccountERC7579.execute(),
+    // UserOpBuilder wraps calldata in EchoDelegationModule.execute(),
     // fetches nonce, gets paymaster sponsorship, and submits via Pimlico.
     // The `calldata` here is the inner swap calldata (exactInputSingle etc).
     // UserOpBuilder extracts the target from SwapCalldata context — but since
@@ -521,7 +535,10 @@ export class McpServer {
     innerCalldata: Hex,
     signature:     Hex,
   ): Promise<{ userOpHash: Hex; txHash: Hex }> {
-    return this.userOpBuilder.submit(account, target, innerCalldata, signature);
+    const eip7702Auth = this._readContextEip7702Auth();
+    return this.userOpBuilder.submit(account, target, innerCalldata, signature, {
+      ...(eip7702Auth ? { eip7702Auth } : {}),
+    });
   }
 }
 
@@ -531,7 +548,7 @@ const TOOL_DEFINITIONS = [
   {
     name:        'echo_get_context',
     description:
-      'Get the current active Echo account context — instanceId, accountAddress, owner wallet, and name. ' +
+      'Get the current Echo context — instanceId, user EOA (UserOp.sender / swap recipient), owner wallet, and policy addresses. ' +
       'ALWAYS call this first before any other echo_ tool. ' +
       'Never ask the user for instanceId — retrieve it automatically with this tool.',
     inputSchema: { type: 'object', properties: {}, required: [] },
@@ -539,8 +556,8 @@ const TOOL_DEFINITIONS = [
   {
     name:        'echo_submit_intent',
     description:
-      'Execute a swap immediately using the real-time mode Execute Key. ' +
-      'Use this when the user is present and commanding a one-off swap. ' +
+      'Execute a swap immediately using the real-time Execute Key (EIP-7702 EOA as sender). ' +
+      'Requires policy + EIP-7702 registration on-chain; user EOA must hold tokens and approve SwapRouter. ' +
       'Returns the transaction hash when the swap is confirmed on-chain.',
     inputSchema: {
       type: 'object',

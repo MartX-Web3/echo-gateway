@@ -8,7 +8,7 @@
  *
  * The Action Builder pattern:
  *   - The tool builds calldata — the agent never touches calldata directly
- *   - recipient is always hardcoded to AccountERC7579 (S2 enforcement)
+ *   - recipient is always hardcoded to user EOA (S2 enforcement)
  *   - The Validator independently re-verifies recipient on-chain
  */
 
@@ -79,6 +79,6 @@ export interface SwapCalldata {
   selector: Hex;
   /** The quote used to build this calldata */
   quote: SwapQuote;
-  /** recipient hardcoded to AccountERC7579 — never the agent */
+  /** recipient hardcoded to user EOA — never the agent */
   recipient: Address;
 }

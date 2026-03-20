@@ -15,13 +15,17 @@ export interface GatewayConfig {
 
   // Contract addresses (Sepolia Phase 2)
   contracts: {
-    policyRegistry:     `0x${string}`;
-    intentRegistry:     `0x${string}`;
-    echoPolicyValidator:`0x${string}`;
-    echoAccountFactory: `0x${string}`;
-    uniswapV3Router:    `0x${string}`;
-    uniswapV3Quoter:    `0x${string}`;
+    policyRegistry:       `0x${string}`;
+    intentRegistry:       `0x${string}`;
+    echoPolicyValidator:  `0x${string}`;
+    /** EchoDelegationModule — EIP-7702 delegate target for UserOp.sender (user EOA). */
+    echoDelegationModule: `0x${string}`;
+    uniswapV3Router:      `0x${string}`;
+    uniswapV3Quoter:      `0x${string}`;
   };
+
+  /** Optional — EchoOnboarding / docs links only; not required for UserOp assembly. */
+  echoOnboarding: `0x${string}` | null;
 
   // Template IDs (from Deploy.s.sol output)
   templates: {
@@ -56,6 +60,15 @@ function addr(name: string): `0x${string}` {
   return val as `0x${string}`;
 }
 
+function optionalAddr(name: string): `0x${string}` | null {
+  const val = process.env[name];
+  if (!val?.trim()) return null;
+  if (!val.startsWith('0x') || val.length !== 42) {
+    throw new Error(`Gateway config: ${name} is not a valid address`);
+  }
+  return val as `0x${string}`;
+}
+
 function bytes32(name: string): `0x${string}` {
   const val = required(name);
   if (!val.startsWith('0x') || val.length !== 66) {
@@ -71,13 +84,15 @@ export function loadConfig(): GatewayConfig {
     chainId:       parseInt(optional('CHAIN_ID', '11155111'), 10),
 
     contracts: {
-      policyRegistry:      addr('POLICY_REGISTRY'),
-      intentRegistry:      addr('INTENT_REGISTRY'),
-      echoPolicyValidator: addr('ECHO_POLICY_VALIDATOR'),
-      echoAccountFactory:  addr('ECHO_ACCOUNT_FACTORY'),
-      uniswapV3Router:     addr('UNISWAP_V3_ROUTER'),
-      uniswapV3Quoter:     addr('UNISWAP_V3_QUOTER'),
+      policyRegistry:       addr('POLICY_REGISTRY'),
+      intentRegistry:       addr('INTENT_REGISTRY'),
+      echoPolicyValidator:  addr('ECHO_POLICY_VALIDATOR'),
+      echoDelegationModule: addr('ECHO_DELEGATION_MODULE'),
+      uniswapV3Router:      addr('UNISWAP_V3_ROUTER'),
+      uniswapV3Quoter:      addr('UNISWAP_V3_QUOTER'),
     },
+
+    echoOnboarding: optionalAddr('ECHO_ONBOARDING'),
 
     templates: {
       conservative: bytes32('TEMPLATE_CONSERVATIVE'),

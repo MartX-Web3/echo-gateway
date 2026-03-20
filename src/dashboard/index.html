@@ -333,7 +333,7 @@
       <div class="card mb-24">
         <div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--subtle)">Network</span><span class="pill pill-blue">Sepolia Testnet</span></div>
         <div class="flex justify-between items-center" style="padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--subtle)">PolicyRegistry</span><span class="addr" id="set-registry-addr">—</span></div>
-        <div class="flex justify-between items-center" style="padding:8px 0"><span style="font-size:12px;color:var(--subtle)">EchoAccountFactory</span><span class="addr" id="set-factory-addr">—</span></div>
+        <div class="flex justify-between items-center" style="padding:8px 0"><span style="font-size:12px;color:var(--subtle)">EchoDelegationModule</span><span class="addr" id="set-delegation-module-addr">—</span></div>
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
           <div class="field" style="margin-bottom:12px">
             <label>SEPOLIA_RPC_URL</label>
@@ -388,7 +388,7 @@
     <div class="page-header" style="padding:0 0 20px;border-bottom:1px solid var(--border);margin-bottom:28px">
       <div>
         <div class="page-title">Set up Echo</div>
-        <div class="page-subtitle">Create your on-chain smart account with enforced spending limits</div>
+        <div class="page-subtitle">Link your wallet (EOA) and policy instance — EIP-7702 + EchoDelegationModule</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <span id="ob-step-label" style="font-size:11px;color:var(--subtle);font-family:'IBM Plex Mono',monospace">Step 1 of 4</span>
@@ -407,7 +407,7 @@
         <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Connect your wallet</h2>
         <p style="font-size:12px;color:var(--subtle);margin-bottom:24px;line-height:1.7">
           MetaMask, OKX Wallet, Coinbase Wallet, or any EIP-1193 compatible wallet.
-          This wallet address will be the owner of your Echo Account.
+          This EOA is UserOperation.sender; hold tokens and SwapRouter approvals here.
         </p>
         <button class="btn btn-primary" id="ob-connect-btn" onclick="showWalletPicker()" style="padding:10px 20px">
           Connect Wallet
@@ -428,7 +428,7 @@
       <div id="ob-panel-2" class="hidden">
         <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Name your account</h2>
         <p style="font-size:12px;color:var(--subtle);margin-bottom:24px;line-height:1.7">
-          Give this Echo Account a name. You can have multiple accounts for different purposes.
+          Give this Echo context a name. You can have multiple policy instances for different purposes.
         </p>
         <div style="max-width:320px">
           <div class="field">
@@ -544,17 +544,24 @@
 
         <div style="display:flex;gap:8px">
           <button class="btn btn-ghost" onclick="obGoStep(2)">← Back</button>
-          <button class="btn btn-primary" id="ob-policy-next-btn" onclick="obNextStep(3)">Review & Deploy →</button>
+          <button class="btn btn-primary" id="ob-policy-next-btn" onclick="obNextStep(3)">Review & link →</button>
         </div>
       </div>
 
-      <!-- STEP 4: Review + deploy -->
+      <!-- STEP 4: Review + link KeyStore -->
       <div id="ob-panel-4" class="hidden">
-        <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Review & deploy</h2>
+        <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Review & link</h2>
         <p style="font-size:12px;color:var(--subtle);margin-bottom:20px;line-height:1.7">
-          One transaction will deploy your ERC-7579 smart account and register your policy on-chain.
-          Review the parameters below before signing.
+          Complete policy registration and EIP-7702 binding on-chain using <strong>echo-contracts</strong> (see that repo README).
+          Then paste your <strong>PolicyInstance ID</strong> below. The Gateway will generate an execute key locally — no EOA private key is stored.
         </p>
+
+        <div class="field mb-16" style="max-width:100%">
+          <label>Policy instance ID (bytes32 hex)</label>
+          <input type="text" id="ob-instance-id" placeholder="0x + 64 hex chars" autocomplete="off"
+            style="font-size:12px;width:100%;font-family:'IBM Plex Mono',monospace" />
+          <div class="field-hint">From your on-chain registration transaction (topics / logs). Must match the policy bound to this wallet.</div>
+        </div>
 
         <div class="card mb-16" style="padding:0;overflow:hidden">
           <table class="table">
@@ -563,8 +570,9 @@
         </div>
 
         <div class="alert alert-info mb-20" style="font-size:12px">
-          After deployment, the Gateway will generate an execute key and link it to your account.
-          No private key leaves this machine.
+          Optional: after signing an EIP-7702 authorization in your wallet, POST <code>eip7702Auth</code> with <code>/api/context</code>
+          (or set <code>eip7702Auth</code> in <code>context.json</code>) so Pimlico receives the same payload as in
+          <a href="https://docs.pimlico.io/references/bundler/endpoints/eth_sendUserOperation" target="_blank" rel="noopener">eth_sendUserOperation</a>.
         </div>
 
         <div id="ob-error" class="alert alert-error hidden mb-16"></div>
@@ -573,7 +581,7 @@
         <div style="display:flex;gap:8px">
           <button class="btn btn-ghost" onclick="obGoStep(3)">← Back</button>
           <button class="btn btn-primary" id="ob-create-btn" onclick="createAccount()" style="padding:10px 20px">
-            Deploy Account
+            Link to Gateway
           </button>
         </div>
       </div>
@@ -588,7 +596,7 @@
       <img id="connect-logo-img" src="/assets/logo-dark.png"
         style="width:48px;height:48px;border-radius:12px;object-fit:contain;margin:0 auto 20px;display:block" />
       <div style="font-size:20px;font-weight:300;margin-bottom:8px">Connect your wallet</div>
-      <div style="font-size:12px;color:var(--subtle);line-height:1.7;margin-bottom:24px">Connect the wallet that owns your Echo Account to view and manage your policy.</div>
+      <div style="font-size:12px;color:var(--subtle);line-height:1.7;margin-bottom:24px">Connect the wallet that owns your Echo policy instance (EOA) to view and manage your policy.</div>
       <button class="btn btn-primary" onclick="showWalletPicker()" style="width:100%;justify-content:center;padding:10px">Connect Wallet</button>
       <div id="connect-error" class="alert alert-error hidden mt-16" style="text-align:left"></div>
     </div>
@@ -612,7 +620,7 @@
 
 <div class="modal-overlay" id="modal-token"><div class="modal"><div class="modal-header"><div class="modal-title" id="modal-token-title">Set Token Limit</div><button class="modal-close" onclick="closeModal('modal-token')">×</button></div><div class="field"><label>Token Address</label><input type="text" id="mt-token-addr" placeholder="0x…" oninput="mtDebouncedTokenLookup()" onkeydown="if(event.key==='Enter'){mtLookupTokenMeta()}"/><div class="field-hint" style="display:flex;justify-content:space-between;gap:12px"><span>Symbol: <span class="mono" id="mt-token-symbol">—</span></span><span>Balance: <span class="mono" id="mt-token-balance">—</span></span></div></div><div class="grid-2" style="gap:12px"><div class="field" style="margin-bottom:0"><label>Max per Swap (USDC)</label><input type="number" id="mt-perOp" placeholder="100" min="1"/></div><div class="field" style="margin-bottom:0"><label>Max per Day (USDC)</label><input type="number" id="mt-perDay" placeholder="500" min="1"/></div></div><div id="mt-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" onclick="saveTokenLimit()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-token')">Cancel</button></div></div></div>
 
-<div class="modal-overlay" id="modal-create-session"><div class="modal"><div class="modal-header"><div class="modal-title">New Session</div><button class="modal-close" onclick="closeModal('modal-create-session')">×</button></div><div class="grid-2" style="gap:12px"><div class="field"><label>Token In</label><select id="ms-tokenIn"><option value="0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8">USDC</option><option value="0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9">WETH</option></select></div><div class="field"><label>Token Out</label><select id="ms-tokenOut"><option value="0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9">WETH</option><option value="0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8">USDC</option></select></div><div class="field"><label>Max per Swap (USDC)</label><input type="number" id="ms-maxPerOp" placeholder="50"/></div><div class="field"><label>Total Budget (USDC)</label><input type="number" id="ms-budget" placeholder="350"/></div><div class="field"><label>Max ops per day</label><input type="number" id="ms-opsPerDay" placeholder="2" min="1"/></div><div class="field"><label>Duration (days)</label><input type="number" id="ms-days" placeholder="30" min="1" max="365"/></div></div><div id="ms-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" id="ms-create-btn" onclick="createSession()">Create Session</button><button class="btn btn-ghost" onclick="closeModal('modal-create-session')">Cancel</button></div></div></div>
+<div class="modal-overlay" id="modal-create-session"><div class="modal"><div class="modal-header"><div class="modal-title">New Session</div><button class="modal-close" onclick="closeModal('modal-create-session')">×</button></div><div class="grid-2" style="gap:12px"><div class="field"><label>Token In</label><select id="ms-tokenIn"><option value="0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43">MockUSDC</option><option value="0xD9100773B0B2717B927265Ce92afeA7c3dCA620E">MockWETH</option></select></div><div class="field"><label>Token Out</label><select id="ms-tokenOut"><option value="0xD9100773B0B2717B927265Ce92afeA7c3dCA620E">MockWETH</option><option value="0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43">MockUSDC</option></select></div><div class="field"><label>Max per Swap (USDC)</label><input type="number" id="ms-maxPerOp" placeholder="50"/></div><div class="field"><label>Total Budget (USDC)</label><input type="number" id="ms-budget" placeholder="350"/></div><div class="field"><label>Max ops per day</label><input type="number" id="ms-opsPerDay" placeholder="2" min="1"/></div><div class="field"><label>Duration (days)</label><input type="number" id="ms-days" placeholder="30" min="1" max="365"/></div></div><div id="ms-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" id="ms-create-btn" onclick="createSession()">Create Session</button><button class="btn btn-ghost" onclick="closeModal('modal-create-session')">Cancel</button></div></div></div>
 
 <div class="modal-overlay" id="modal-pending-tx"><div class="modal"><div class="modal-header"><div class="modal-title">Sign Transaction</div><button class="modal-close" onclick="closeModal('modal-pending-tx')">×</button></div><p style="font-size:12px;color:var(--subtle);margin-bottom:16px;line-height:1.6" id="ptx-desc"></p><div class="card card-sm mb-16" style="font-size:11px;color:var(--subtle);font-family:'IBM Plex Mono',monospace;word-break:break-all;line-height:1.6" id="ptx-details"></div><div id="ptx-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" id="ptx-sign-btn" onclick="signPendingTx()">Sign in wallet</button><button class="btn btn-ghost" onclick="closeModal('modal-pending-tx')">Cancel</button></div></div></div>
 
@@ -625,10 +633,13 @@ window.addEventListener('eip6963:announceProvider',e=>detectedWallets.set(e.deta
 window.dispatchEvent(new Event('eip6963:requestProvider'));
 
 const TOKENS={
-  // Sepolia
+  // Echo mock tokens (Sepolia MVP)
+  '0x74c954c2e6f090d0ef94ca9a220f5b4d70ab6a43':{symbol:'MockUSDC',decimals:6},
+  '0xd9100773b0b2717b927265ce92afea7c3dca620e':{symbol:'MockWETH',decimals:18},
+  // Sepolia canonical test tokens (legacy)
   '0x94a9d9ac8a22534e3faca9f4e7f2e2cf85d5e4c8':{symbol:'USDC',decimals:6},
   '0x7b79995e5f793a07bc00c21412e50ecae098e7f9':{symbol:'WETH',decimals:18},
-  // Also handle mainnet addresses in case they appear
+  // Mainnet addresses if they appear in policies
   '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48':{symbol:'USDC',decimals:6},
   '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2':{symbol:'WETH',decimals:18},
 };
@@ -1101,7 +1112,7 @@ function mtDebouncedTokenLookup(){
 async function mtLookupTokenMeta(){
   const addr=document.getElementById('mt-token-addr')?.value?.trim()||'';
   if(!isValidEthAddress(addr)){mtSetTokenMeta({symbol:'—',balance:'—'});return;}
-  if(!currentKey?.accountAddress){showResult('mt-result','No smart account loaded.','error');return;}
+  if(!currentKey?.accountAddress){showResult('mt-result','No EOA / policy context loaded.','error');return;}
 
   const tokenAddr=addr.toLowerCase();
   mtTokenLookupSeq++;
@@ -1237,7 +1248,7 @@ const PROTOCOL_REGISTRY=[
   {id:'mock-router',name:'Mock SwapRouter (Sepolia)',icon:'🧪',
    desc:'Mock swap router for testnet. Fixed rate: 1 WETH = 2000 USDC.',
    selectors:['0x414bf389','0x4aa4a4fa'],labels:['exactInputSingle','exactOutputSingle'],
-   address:'0xC272Ce98e3a103297EB3A57E4f86902c0fdd2081'},
+   address:'0x68a27E6b5E671375bA5b2De857DaeB4E757a9e17'},
 ];
 
 async function loadProtocols(){
@@ -1406,7 +1417,7 @@ async function createSession(){
 function renderSettings(){
   if(!gatewayConfig)return;
   document.getElementById('set-registry-addr').textContent=gatewayConfig.contracts.policyRegistry?.slice(0,10)+'…';
-  document.getElementById('set-factory-addr').textContent=gatewayConfig.contracts.echoAccountFactory?.slice(0,10)+'…';
+  document.getElementById('set-delegation-module-addr').textContent=gatewayConfig.contracts.echoDelegationModule?.slice(0,10)+'…';
   // Load editable env vars (limited to allowlist)
   fetch('/api/settings').then(r=>r.json()).then(s=>{
     document.getElementById('set-sepolia-rpc-url').value=s?.sepoliaRpcUrl??'';
@@ -1508,11 +1519,11 @@ function copyMcpConfig(){
 
 const TPL={
   conservative:{globalDaily:400,globalTotal:2000,exploreBudget:20,exploreTx:5,days:90,
-    tokens:[{token:'0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8',symbol:'USDC',perOp:50,perDay:200}]},
+    tokens:[{token:'0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43',symbol:'MockUSDC',perOp:50,perDay:200}]},
   standard:    {globalDaily:1000,globalTotal:5000,exploreBudget:50,exploreTx:10,days:90,
-    tokens:[{token:'0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8',symbol:'USDC',perOp:100,perDay:500}]},
+    tokens:[{token:'0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43',symbol:'MockUSDC',perOp:100,perDay:500}]},
   active:      {globalDaily:4000,globalTotal:20000,exploreBudget:100,exploreTx:25,days:90,
-    tokens:[{token:'0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8',symbol:'USDC',perOp:500,perDay:2000}]},
+    tokens:[{token:'0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43',symbol:'MockUSDC',perOp:500,perDay:2000}]},
 };
 let selectedTemplate=null;
 let obTokens=[];
@@ -1581,8 +1592,8 @@ function obRenderTokenList(){
 
 function obAddToken(){
   const KNOWN=[
-    {token:'0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8',symbol:'USDC'},
-    {token:'0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9',symbol:'WETH'},
+    {token:'0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43',symbol:'MockUSDC'},
+    {token:'0xD9100773B0B2717B927265Ce92afeA7c3dCA620E',symbol:'MockWETH'},
   ];
   const existing=new Set(obTokens.map(t=>t.token.toLowerCase()));
   const available=KNOWN.filter(k=>!existing.has(k.token.toLowerCase()));
@@ -1636,49 +1647,24 @@ function obBuildReview(){
 async function createAccount(){
   if(!window._echoProvider){showOb('Connect your wallet first.','error');return}
   const accountName=document.getElementById('ob-account-name')?.value?.trim()||'My Account';
+  const instanceId=document.getElementById('ob-instance-id')?.value?.trim()??'';
+  if(!instanceId.startsWith('0x')||instanceId.length!==66){showOb('Enter a valid policy instance ID (0x + 64 hex).','error');return}
   const btn=document.getElementById('ob-create-btn');
-  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Deploying…';hideOb();
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Linking…';hideOb();
   try{
     const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
     const owner=accounts[0];
-    const daily=Number(document.getElementById('ob-global-daily')?.value)||1000;
-    const total=Number(document.getElementById('ob-global-total')?.value)||5000;
-    const explB=Number(document.getElementById('ob-explore-budget')?.value)||0;
-    const explT=Number(document.getElementById('ob-explore-pertx')?.value)||0;
-    const days=Number(document.getElementById('ob-expiry-days')?.value)||90;
-    const expiry=BigInt(Math.floor(Date.now()/1000)+days*86400);
-    const salt='0x'+Date.now().toString(16).padStart(64,'0');
-    const templateId=gatewayConfig.templates['standard'];
-    const SEL_EI='0x414bf389',SEL_EO='0x4aa4a4fa';
-    const iface=new ethers.Interface(['function createAccount(tuple(address owner,bytes32 templateId,bytes32 executeKeyHash,address[] initialTokens,uint256[] maxPerOps,uint256[] maxPerDays,address[] targets,bytes4[] selectors,uint256 explorationBudget,uint256 explorationPerTx,uint256 globalMaxPerDay,uint256 globalTotalBudget,uint64 expiry) r,bytes32 salt) returns (address)']);
-    const calldata=iface.encodeFunctionData('createAccount',[{
-      owner,templateId,executeKeyHash:'0x'+'00'.repeat(31)+'01',
-      initialTokens:obTokens.map(t=>t.token),
-      maxPerOps:obTokens.map(t=>BigInt(Math.round(t.perOp*1e6))),
-      maxPerDays:obTokens.map(t=>BigInt(Math.round(t.perDay*1e6))),
-      targets:[gatewayConfig.contracts.uniswapV3Router],selectors:[SEL_EI,SEL_EO],
-      explorationBudget:BigInt(Math.round(explB*1e6)),explorationPerTx:BigInt(Math.round(explT*1e6)),
-      globalMaxPerDay:BigInt(Math.round(daily*1e6)),globalTotalBudget:BigInt(Math.round(total*1e6)),expiry,
-    },salt]);
-    showOb('Confirm transaction in your wallet…','info');
-    const txHash=await window._echoProvider.request({method:'eth_sendTransaction',params:[{from:owner,to:gatewayConfig.contracts.echoAccountFactory,data:calldata}]});
-    showOb('Tx submitted. Waiting for confirmation…','info');
-    await waitForTx(txHash);
-    const gaIface=new ethers.Interface(['function getAddress(address userWallet,bytes32 salt) view returns (address)']);
-    const addrRes=await window._echoProvider.request({method:'eth_call',params:[{to:gatewayConfig.contracts.echoAccountFactory,data:gaIface.encodeFunctionData('getAddress',[owner,salt])},'latest']});
-    const accountAddress=gaIface.decodeFunctionResult('getAddress',addrRes)[0];
-    const receipt=await window._echoProvider.request({method:'eth_getTransactionReceipt',params:[txHash]});
-    const instanceId=receipt?.logs?.[0]?.topics?.[1]??null;
     const keyRes=await fetch('/api/register-key',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({instanceId,accountAddress,ownerAddress:owner,name:accountName,label:selectedTemplate??'custom'})
+      body:JSON.stringify({instanceId,accountAddress:owner,ownerAddress:owner,name:accountName,label:selectedTemplate??'custom'})
     }).then(r=>r.json());
     if(keyRes.error)throw new Error(keyRes.error);
-    showOb('✓ Account deployed! Loading dashboard…','info');
+    await fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instanceId})});
+    showOb('✓ Linked! Loading dashboard…','info');
     window._echoProvider=null;
     window._echoWalletName=null;
     await loadAllAccounts();
     navigate('overview');
-  }catch(err){showOb(err.message??String(err),'error');btn.disabled=false;btn.textContent='Deploy Account'}
+  }catch(err){showOb(err.message??String(err),'error');btn.disabled=false;btn.textContent='Link to Gateway'}
 }
 
 function showOb(msg,type){

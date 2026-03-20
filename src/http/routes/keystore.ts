@@ -1,16 +1,19 @@
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { Router, Request, Response } from 'express';
 import type { KeyStore } from '../../keystore/KeyStore.js';
+import type { BundlerEip7702Auth } from '../../userop/UserOpBuilder.js';
 
 export function registerKeystoreRoutes(router: Router, keyStore: KeyStore): void {
 
   // POST /api/register-key
-  // Called by Dashboard after EchoAccountFactory.createAccount() is confirmed on-chain.
-  // Stores the execute key in KeyStore so Gateway can sign UserOps.
+  // Called by Dashboard after on-chain policy instance + EOA binding (see echo-contracts).
+  // `accountAddress` is the user EOA (UserOp.sender); stores execute key for Gateway signing.
   router.post('/register-key', async (req: Request, res: Response) => {
     try {
       const { instanceId, accountAddress, ownerAddress, name, label } = req.body as {
         instanceId:     string;
-        accountAddress: string;  // ERC-7579 smart account address
+        accountAddress: string;  // User EOA — UserOp.sender (swap recipient)
         ownerAddress?:  string;  // EOA wallet address (owner)
         name?:          string;  // user-defined account name e.g. "My DCA Bot"
         label?:         string;  // template name fallback
@@ -27,7 +30,7 @@ export function registerKeystoreRoutes(router: Router, keyStore: KeyStore): void
         return;
       }
 
-      // Label format: "name|account:0xSmartAcct|owner:0xEOA"
+      // Label format: "name|account:0xEOA|owner:0xEOA"
       // Structured so we can parse each field back out
       const accountName = name || label || 'My Account';
       const storedLabel = [
@@ -53,7 +56,7 @@ export function registerKeystoreRoutes(router: Router, keyStore: KeyStore): void
         label:          meta.label,
         createdAt:      meta.createdAt,
         expiresAt:      meta.expiresAt,
-        // Parse structured label: "name|account:0xSmartAcct|owner:0xEOA"
+        // Parse structured label: "name|account:0xEOA|owner:0xEOA"
         accountAddress: meta.label.match(/account:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
         ownerAddress:   meta.label.match(/owner:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
         name:           meta.label.split('|')[0] ?? meta.label,
@@ -99,17 +102,31 @@ export function registerKeystoreRoutes(router: Router, keyStore: KeyStore): void
   // POST /api/context — Dashboard calls this when user connects wallet and account loads
   router.post('/context', async (req: Request, res: Response) => {
     try {
-      const { instanceId } = req.body as { instanceId: string };
+      const { instanceId, eip7702Auth } = req.body as {
+        instanceId: string;
+        /** Pimlico `eip7702Auth` — signed EIP-7702 authorization (delegate = EchoDelegationModule). */
+        eip7702Auth?: BundlerEip7702Auth;
+      };
       if (!instanceId) { res.status(400).json({ error: 'instanceId required' }); return; }
       // Verify key exists
       const meta = keyStore.getKeyMeta(instanceId);
       if (!meta) { res.status(404).json({ error: 'instanceId not found in KeyStore' }); return; }
       // Store as active context in a simple file next to keystore
-      const { writeFileSync, mkdirSync } = await import('node:fs');
-      const { dirname } = await import('node:path');
-      const ctxPath = keyStore['path'].replace('keystore.json', 'context.json');
+      const ctxPath = keyStore.path.replace('keystore.json', 'context.json');
       mkdirSync(dirname(ctxPath), { recursive: true });
-      writeFileSync(ctxPath, JSON.stringify({ activeInstanceId: instanceId, updatedAt: Date.now() }));
+      let prev: Record<string, unknown> = {};
+      if (existsSync(ctxPath)) {
+        try {
+          prev = JSON.parse(readFileSync(ctxPath, 'utf8')) as Record<string, unknown>;
+        } catch { /* ignore */ }
+      }
+      const next = {
+        ...prev,
+        activeInstanceId: instanceId,
+        updatedAt:        Date.now(),
+        ...(eip7702Auth !== undefined ? { eip7702Auth } : {}),
+      };
+      writeFileSync(ctxPath, JSON.stringify(next));
       res.json({ ok: true, instanceId });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
@@ -130,7 +147,7 @@ export function registerKeystoreRoutes(router: Router, keyStore: KeyStore): void
       }
 
       // Parse existing label and rebuild with new fields
-      // Old format: "account:0xSmartAcct (standard)"  or "Name|account:0xSmartAcct|owner:0xEOA"
+      // Old format: "account:0x... (standard)"  or "Name|account:0x...|owner:0xEOA"
       const existingLabel = meta.label;
       const accountAddrMatch = existingLabel.match(/account:(0x[0-9a-fA-F]{40})/);
       const accountAddr = accountAddrMatch?.[1] ?? '';

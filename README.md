@@ -4,6 +4,8 @@ The local execution gateway for Echo Protocol. Runs on your machine alongside yo
 
 > **Local-first.** The gateway runs entirely on your machine. No cloud server, no third-party relay. Your keys never leave your local environment.
 
+**EIP-7702 (MVP):** `UserOperation.sender` is the **user EOA**. The EOA delegates execution code to **`EchoDelegationModule`** (`ECHO_DELEGATION_MODULE`). Pimlico requests include optional **`eip7702Auth`** (signed authorization). Real-time UserOp signatures use **`0x03` + 32-byte ExecuteKey** (`validateFor7702`); session mode remains **`0x02`**. On-chain registration and lifecycle are documented in the sibling **`echo-contracts`** repo (`README.md`).
+
 ---
 
 ## Overview
@@ -12,13 +14,9 @@ Echo Gateway has two jobs:
 
 1. **Dashboard & control plane (for humans + AI agents):**
    - Serves a local dashboard where users complete onboarding after starting the gateway.
-   - The dashboard lists all **active Echo smart accounts** stored in the local KeyStore. If none exist, it walks the user through onboarding:
-     - connect an EOA wallet and confirm ownership,
-     - choose a **smart account nickname**,
-     - deploy a smart account + policy using a **default policy template** (no need to tune every limit up-front),
-     - store the execute key locally.
-   - Management is **smart-account centric**: each entry in the UI represents one Echo smart account, its bound owner wallet, its active policy instance (and on-chain address), and its recent activity. Users can switch between smart accounts in the sidebar, similar to switching wallets in MetaMask.
-   - Exposes an MCP server that agent frameworks (e.g. OpenClaw) use to query available tools, submit intents, manage sessions, and monitor activity **for the currently selected smart account**.
+   - The dashboard lists **policy contexts** stored in the local KeyStore (each maps a `PolicyInstance` to your **EOA** as `UserOp.sender`). If none exist, onboarding walks you through naming, optional template hints, then **linking** an instance ID after you register on-chain via **echo-contracts**.
+   - Each entry represents one policy instance, the **EOA** used as sender/recipient, owner wallet, and activity. Users can switch contexts in the sidebar.
+   - Exposes an MCP server that agent frameworks (e.g. OpenClaw) use to query tools, submit intents, manage sessions, and monitor activity **for the currently selected context**.
 2. **Execution plane (for transactions):** Explicit transactions are built by the gateway (no separate “build transaction” tool; no RPC intercept). We build UserOperations from agent intents using **user-registered protocols** (allowedTargets) and **allowed selectors**, run **two-stage pre-validation** (PreValidator), then submit via Pimlico.
 
 The gateway enforces Echo's security model at the application layer — but the on-chain `EchoPolicyValidator` is always the final authority.
@@ -50,15 +48,16 @@ Internal components:
  ├─ UniswapV3Tool      internal tool module (MVP only)
  │                     calls Uniswap Quoter for optimal routing
  │                     builds exactInputSingle calldata
- │                     recipient hardcoded = AccountERC7579
+ │                     recipient hardcoded = user EOA
  │
  ├─ PreValidator       two-stage validation before chain submission
  │    ├─ stage 1       intent layer — check policy limits before calling tool
  │    └─ stage 2       transaction layer — verify calldata after tool returns
  │
- └─ UserOpBuilder      constructs ERC-4337 UserOperations
-                       real-time:  sig = [0x01][pad(executeKey, 32)]
+ └─ UserOpBuilder      constructs ERC-4337 UserOperations (initCode empty)
+                       real-time:  sig = [0x03][pad(executeKey, 32)]  (7702 / validateFor7702)
                        session:    sig = [0x02][sessionId][pad(sessionKey, 32)]
+                       optional:   eip7702Auth on Pimlico JSON-RPC when required
 ```
 
 ---
@@ -87,23 +86,23 @@ User → OpenClaw: "buy 100 USDC of ETH"
 3. UniswapV3Tool:
    - call Uniswap Quoter → optimal amountOutMinimum
    - build exactInputSingle calldata
-   - recipient = AccountERC7579 (hardcoded, not from agent)
+   - recipient = user EOA (hardcoded, not from agent)
    → return calldata
 
 4. Pre-validation #2 (transaction layer):
    - target == Uniswap V3 SwapRouter constant?
    - selector == exactInputSingle?
-   - decoded recipient == AccountERC7579?
+   - decoded recipient == user EOA?
    - decoded amountIn matches declared intent?
    → PASS: build UserOperation
 
 5. UserOpBuilder:
-   - sender = AccountERC7579
-   - signature = [0x01][pad(executeKey, 32)]
-   - gas estimate via Pimlico
+   - sender = user EOA; initCode = empty
+   - signature = [0x03][pad(executeKey, 32)]
+   - gas estimate / sponsor via Pimlico; include eip7702Auth when configured (e.g. `context.json`)
 
 6. Submit to Pimlico bundler
-   → EntryPoint → AccountERC7579 → EchoPolicyValidator (on-chain)
+   → EntryPoint → EchoDelegationModule (7702) → EchoPolicyValidator (on-chain)
    → PASS → Uniswap swap executes
 
 7. Return { txHash, amountOut } to OpenClaw
@@ -152,7 +151,7 @@ Pre-validation is a UX layer, not a security layer. The on-chain Validator is al
 **Stage 2 — transaction layer** (after the tool returns calldata)
 - Echo does not trust the tool's output
 - Independently decodes the calldata and verifies it matches the declared intent
-- Verifies `recipient == AccountERC7579` — the most critical check
+- Verifies `recipient == user EOA` (`UserOp.sender`) — the most critical check
 - Verifies `target` and `selector` are on the allowlist
 
 If Stage 2 fails, the UserOp is never built. The tool's calldata is rejected.
@@ -215,7 +214,7 @@ The Key Store is an AES-256 encrypted local file that persists execute keys and 
 ### Prerequisites
 
 - Node.js 20+
-- A browser to access the local Echo Gateway dashboard (the dashboard will deploy your Echo smart account during onboarding)
+- A browser to access the local Echo Gateway dashboard (onboarding links your EOA + policy instance after on-chain registration)
 - OpenClaw (or another MCP-compatible agent) installed locally
 
 ### Install
@@ -237,21 +236,63 @@ CHAIN_ID=11155111
 # Pimlico
 PIMLICO_API_KEY=your_pimlico_key
 
-# Echo contracts (Sepolia)
-POLICY_REGISTRY_ADDRESS=0x...
-INTENT_REGISTRY_ADDRESS=0x...
-VALIDATOR_ADDRESS=0x...
-FACTORY_ADDRESS=0x...
+# Echo contracts (Sepolia) — names match .env.example
+POLICY_REGISTRY=0x...
+INTENT_REGISTRY=0x...
+ECHO_POLICY_VALIDATOR=0x...
+ECHO_DELEGATION_MODULE=0x...
+# Optional: ECHO_ONBOARDING=0x...
 
 # Key Store
 KEYSTORE_PASSWORD=your_local_password
 
-# MCP Server
-MCP_PORT=3000
+# Gateway HTTP (Dashboard + API)
+GATEWAY_PORT=3000
 
-# RPC (gateway and /api/rpc passthrough use this; no intercept)
-SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+# Mock Uniswap stack (MVP on Sepolia) — see "Reference deployment" below
+UNISWAP_V3_ROUTER=0x...
+UNISWAP_V3_QUOTER=0x...
+
+# Template bytes32 IDs (from same deploy)
+TEMPLATE_CONSERVATIVE=0x...
+TEMPLATE_STANDARD=0x...
+TEMPLATE_ACTIVE=0x...
 ```
+
+### Reference deployment (Sepolia — Mock + EIP-7702)
+
+Pinned addresses from a typical **echo-contracts** `Deploy.s.sol` run on **Sepolia**. Copy into `.env` as needed; **redeploys change these** — treat as examples unless you own that deployment.
+
+**Echo Protocol mock contracts (Sepolia)**
+
+| Contract | Address |
+|----------|---------|
+| MockWETH | `0xD9100773B0B2717B927265Ce92afeA7c3dCA620E` |
+| MockUSDC | `0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43` |
+| MockQuoterV2 | `0x4683a16b9D165ff8EaA90b1cD711c62caBA9c70e` |
+| MockSwapRouter | `0x68a27E6b5E671375bA5b2De857DaeB4E757a9e17` |
+
+Gateway maps **`UNISWAP_V3_ROUTER`** → MockSwapRouter, **`UNISWAP_V3_QUOTER`** → MockQuoterV2. MockWETH / MockUSDC are **not** separate env vars; the Dashboard and scripts default token lists point at these two addresses.
+
+**Core deployment (EIP-7702 path)**
+
+| Contract | Address | `.env` key |
+|----------|---------|------------|
+| PolicyRegistry | `0x97d34e2af18c20971BE7F1D85Abe73624A13762b` | `POLICY_REGISTRY` |
+| IntentRegistry | `0x69961Da79ad0d8D944357AdEE272E30C3c6E9643` | `INTENT_REGISTRY` |
+| EchoPolicyValidator | `0xb75a300d766b30B5DCec9F79406A9719dF0e350c` | `ECHO_POLICY_VALIDATOR` |
+| EchoDelegationModule | `0x4b6f847f5D85539895A3D9B7b8CE34fF086a0a86` | `ECHO_DELEGATION_MODULE` |
+| EchoOnboarding | `0xe7572264D59BD249119aD83ED31E92d1E49bA7bb` | `ECHO_ONBOARDING` (optional) |
+
+**Policy template IDs (`bytes32`)**
+
+| Template | ID |
+|----------|-----|
+| Conservative | `0x153ccd56661fc5ac2a443a0426cb294076170bb32bd17f75580ae627fa64ea99` |
+| Standard | `0x039a844943398a8fa17d671b48de13f72a9218515234641653363b612011a971` |
+| Active | `0xb770bc267d97571e554e0ea0bc0cfde88e7d5d7fed3ebc83bb964bdf791ac4ea` |
+
+Use `TEMPLATE_CONSERVATIVE`, `TEMPLATE_STANDARD`, `TEMPLATE_ACTIVE` in `.env` for the three rows above.
 
 ### Start
 
@@ -264,14 +305,14 @@ The gateway starts the HTTP server (dashboard + API). RPC proxy is at `/api/rpc`
 
 After the process starts, **open the dashboard in your browser first**:
 
-- If there are no smart accounts in the local KeyStore, the dashboard automatically enters the onboarding flow:
-  - connect your wallet,
-  - set a nickname for the new smart account,
-  - deploy the account + policy using a default, conservative policy template (progressive security model: low limits at first; extend as needed),
+- If there are no contexts in the local KeyStore, the dashboard enters onboarding:
+  - connect your wallet (EOA),
+  - set a nickname and review policy hints,
+  - register the policy instance on-chain (see **echo-contracts** README), then paste **instance ID** to link the Gateway KeyStore,
   - generate and bind an execute key locally.
-- If there are existing smart accounts, the dashboard shows them in a list and lets you switch between them for management.
+- If there are existing contexts, the dashboard lists them and lets you switch for management.
 
-Once onboarding is complete and you have at least one active smart account, you can connect MCP-compatible agents. All MCP tools operate in the context of the **currently selected smart account** in the dashboard.
+Once linking is complete, you can connect MCP-compatible agents. Tools use the **currently selected context** (EOA + instance) in the dashboard.
 
 ### Connect to OpenClaw
 
