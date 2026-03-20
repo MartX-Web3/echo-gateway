@@ -135,6 +135,26 @@ describe('KeyStore', () => {
     await expect(ks.addKey(INSTANCE_ID, 'execute', 'agent2')).rejects.toThrow('already exists');
   });
 
+  it('renameKeyId moves id without changing keyHash', async () => {
+    const ks = new KeyStore(testPath());
+    await ks.unlock(PASSPHRASE);
+    const { keyHash } = await ks.addKey('pending:test123', 'execute', 'x');
+    await ks.renameKeyId('pending:test123', INSTANCE_ID);
+    expect(ks.hasKey('pending:test123')).toBe(false);
+    expect(ks.hasKey(INSTANCE_ID)).toBe(true);
+    expect(ks.getKeyMeta(INSTANCE_ID)?.keyHash).toBe(keyHash);
+  });
+
+  it('renameKeyId throws if target exists or source missing', async () => {
+    const ks = new KeyStore(testPath());
+    await ks.unlock(PASSPHRASE);
+    await ks.addKey(INSTANCE_ID, 'execute', 'a');
+    await ks.addKey('pending:p2', 'execute', 'b');
+    const otherInstance = ('0x' + '22'.repeat(32)) as `0x${string}`;
+    await expect(ks.renameKeyId('pending:missing', otherInstance)).rejects.toThrow('not found');
+    await expect(ks.renameKeyId('pending:p2', INSTANCE_ID)).rejects.toThrow('already exists');
+  });
+
   it('listKeys returns metadata without sensitive fields', async () => {
     const ks = new KeyStore(testPath());
     await ks.unlock(PASSPHRASE);

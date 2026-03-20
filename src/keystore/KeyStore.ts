@@ -227,6 +227,21 @@ export class KeyStore {
   }
 
   /**
+   * Rename a key's id (same raw key + keyHash). Used after on-chain registration
+   * to promote a `pending:*` execute key to the real PolicyInstance bytes32 id.
+   */
+  async renameKeyId(fromId: string, toId: string): Promise<void> {
+    this._assertUnlocked();
+    if (this._findKey(toId) !== undefined) {
+      throw new Error(`KeyStore: target id already exists "${toId}"`);
+    }
+    const stored = this._findKey(fromId);
+    if (!stored) throw new Error(`KeyStore: key not found for id="${fromId}"`);
+    stored.id = toId;
+    await this._flush();
+  }
+
+  /**
    * Update the label on an existing key (without changing the raw key).
    * Used to migrate legacy accounts to the new label format.
    */

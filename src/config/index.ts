@@ -34,6 +34,12 @@ export interface GatewayConfig {
     active:       `0x${string}`;
   };
 
+  // Privy embedded wallet auth (optional)
+  privy: {
+    appId:     string;
+    appSecret: string;
+  } | null;
+
   // KeyStore
   keystorePath: string;
 
@@ -99,6 +105,13 @@ export function loadConfig(): GatewayConfig {
       standard:     bytes32('TEMPLATE_STANDARD'),
       active:       bytes32('TEMPLATE_ACTIVE'),
     },
+
+    privy: (() => {
+      const appId     = process.env['PRIVY_APP_ID']?.trim();
+      const appSecret = process.env['PRIVY_APP_SECRET']?.trim();
+      if (appId && appSecret) return { appId, appSecret };
+      return null;
+    })(),
 
     keystorePath: optional(
       'KEYSTORE_PATH',

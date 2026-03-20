@@ -1,8 +1,19 @@
+import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Router, Request, Response } from 'express';
 import type { KeyStore } from '../../keystore/KeyStore.js';
 import type { BundlerEip7702Auth } from '../../userop/UserOpBuilder.js';
+
+const PENDING_PREFIX = 'pending:' as const;
+
+function isHexAddr(a: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(a);
+}
+
+function isBytes32(a: string): boolean {
+  return /^0x[0-9a-fA-F]{64}$/.test(a);
+}
 
 export function registerKeystoreRoutes(router: Router, keyStore: KeyStore): void {
 
@@ -47,10 +58,112 @@ export function registerKeystoreRoutes(router: Router, keyStore: KeyStore): void
     }
   });
 
+  // POST /api/onboarding/prepare — create execute key under pending id + return keyHash for chain registration
+  router.post('/onboarding/prepare', async (req: Request, res: Response) => {
+    try {
+      const { accountAddress, ownerAddress, name, label } = req.body as {
+        accountAddress: string;
+        ownerAddress?: string;
+        name?:          string;
+        label?:         string;
+      };
+      if (!accountAddress || !isHexAddr(accountAddress)) {
+        res.status(400).json({ error: 'accountAddress (0x + 40 hex) is required' });
+        return;
+      }
+      const pendingId = `${PENDING_PREFIX}${randomBytes(16).toString('hex')}`;
+      const accountName = name || label || 'My Account';
+      const storedLabel = [
+        accountName,
+        `account:${accountAddress}`,
+        ownerAddress && isHexAddr(ownerAddress) ? `owner:${ownerAddress}` : '',
+      ].filter(Boolean).join('|');
+
+      const { keyHash } = await keyStore.addKey(pendingId, 'execute', storedLabel);
+      res.json({ ok: true, pendingId, executeKeyHash: keyHash });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // POST /api/onboarding/finalize — promote pending execute key to on-chain instanceId
+  router.post('/onboarding/finalize', async (req: Request, res: Response) => {
+    try {
+      const { pendingId, instanceId, accountAddress, ownerAddress, name, label } = req.body as {
+        pendingId:      string;
+        instanceId:     string;
+        accountAddress: string;
+        ownerAddress?:  string;
+        name?:          string;
+        label?:         string;
+      };
+      if (!pendingId || !pendingId.startsWith(PENDING_PREFIX)) {
+        res.status(400).json({ error: 'valid pendingId is required' });
+        return;
+      }
+      if (!instanceId || !isBytes32(instanceId)) {
+        res.status(400).json({ error: 'instanceId must be 0x + 64 hex' });
+        return;
+      }
+      if (!accountAddress || !isHexAddr(accountAddress)) {
+        res.status(400).json({ error: 'accountAddress (0x + 40 hex) is required' });
+        return;
+      }
+      if (!keyStore.hasKey(pendingId)) {
+        res.status(404).json({ error: 'pendingId not found — run prepare again' });
+        return;
+      }
+      if (keyStore.hasKey(instanceId)) {
+        res.status(409).json({
+          error:
+            `Key already exists for instanceId=${instanceId}. ` +
+            'Usually the wizard still had an old instanceId after a new "Prepare" (new execute key) without a new Step 3 tx — open Onboarding again to reset, then run Prepare → Step 3 → Finish in one pass. ' +
+            'Or remove the existing execute key for this instance from the Gateway keystore if you intend to replace it.',
+        });
+        return;
+      }
+
+      const accountName = name || label || 'My Account';
+      const storedLabel = [
+        accountName,
+        `account:${accountAddress}`,
+        ownerAddress && isHexAddr(ownerAddress) ? `owner:${ownerAddress}` : '',
+      ].filter(Boolean).join('|');
+
+      await keyStore.renameKeyId(pendingId, instanceId);
+      await keyStore.rotateLabel(instanceId, storedLabel);
+
+      const meta = keyStore.getKeyMeta(instanceId);
+      res.json({ ok: true, instanceId, keyHash: meta?.keyHash, accountAddress, ownerAddress });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // DELETE /api/onboarding/pending/:pendingId — drop an unused pending key
+  router.delete('/onboarding/pending/:pendingId', async (req: Request, res: Response) => {
+    try {
+      const { pendingId } = req.params as { pendingId: string };
+      const id = decodeURIComponent(pendingId);
+      if (!id.startsWith(PENDING_PREFIX)) {
+        res.status(400).json({ error: 'invalid pending id' });
+        return;
+      }
+      if (!keyStore.hasKey(id)) {
+        res.status(404).json({ error: 'not found' });
+        return;
+      }
+      await keyStore.deleteKey(id);
+      res.json({ ok: true, pendingId: id });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // GET /api/keys — list registered instances (no raw keys exposed)
   router.get('/keys', (_req: Request, res: Response) => {
     try {
-      const keys = keyStore.listKeys('execute').map(meta => ({
+      const keys = keyStore.listKeys('execute').filter(meta => !meta.id.startsWith(PENDING_PREFIX)).map(meta => ({
         instanceId:     meta.id,
         keyHash:        meta.keyHash,
         label:          meta.label,

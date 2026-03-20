@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Echo Gateway</title>
   <link id="favicon" rel="icon" type="image/x-icon" href="/assets/favicon-dark.ico" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <style>
@@ -404,13 +404,13 @@
 
       <!-- STEP 1: Connect wallet -->
       <div id="ob-panel-1">
-        <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Connect your wallet</h2>
+        <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Log in with Privy</h2>
         <p style="font-size:12px;color:var(--subtle);margin-bottom:24px;line-height:1.7">
-          MetaMask, OKX Wallet, Coinbase Wallet, or any EIP-1193 compatible wallet.
-          This EOA is UserOperation.sender; hold tokens and SwapRouter approvals here.
+          Sign in with your email — Privy creates an embedded EOA wallet (no browser extension needed).
+          This EOA will be <code>UserOperation.sender</code>; hold tokens and SwapRouter approvals here.
         </p>
         <button class="btn btn-primary" id="ob-connect-btn" onclick="showWalletPicker()" style="padding:10px 20px">
-          Connect Wallet
+          Log in with Privy
         </button>
         <div id="ob-wallet-connected" class="hidden mt-16">
           <div class="card card-sm" style="display:flex;align-items:center;gap:12px">
@@ -548,20 +548,13 @@
         </div>
       </div>
 
-      <!-- STEP 4: Review + link KeyStore -->
+      <!-- STEP 4: Review + guided EIP-7702 + EchoOnboarding -->
       <div id="ob-panel-4" class="hidden">
-        <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">Review & link</h2>
-        <p style="font-size:12px;color:var(--subtle);margin-bottom:20px;line-height:1.7">
-          Complete policy registration and EIP-7702 binding on-chain using <strong>echo-contracts</strong> (see that repo README).
-          Then paste your <strong>PolicyInstance ID</strong> below. The Gateway will generate an execute key locally — no EOA private key is stored.
+        <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">On-chain registration &amp; Gateway link</h2>
+        <p style="font-size:12px;color:var(--subtle);margin-bottom:16px;line-height:1.7">
+          Complete these in order: Gateway creates a pending execute key and <code>executeKeyHash</code> → sign an EIP-7702 authorization (delegate to <code>EchoDelegationModule</code> for Pimlico) →
+          call <code>EchoOnboarding.registerInstanceAndEip7702</code> → promote the pending key to your <code>instanceId</code> in the local KeyStore. Requires <code>ECHO_ONBOARDING</code> and template env vars in <code>.env</code>.
         </p>
-
-        <div class="field mb-16" style="max-width:100%">
-          <label>Policy instance ID (bytes32 hex)</label>
-          <input type="text" id="ob-instance-id" placeholder="0x + 64 hex chars" autocomplete="off"
-            style="font-size:12px;width:100%;font-family:'IBM Plex Mono',monospace" />
-          <div class="field-hint">From your on-chain registration transaction (topics / logs). Must match the policy bound to this wallet.</div>
-        </div>
 
         <div class="card mb-16" style="padding:0;overflow:hidden">
           <table class="table">
@@ -569,20 +562,45 @@
           </table>
         </div>
 
-        <div class="alert alert-info mb-20" style="font-size:12px">
-          Optional: after signing an EIP-7702 authorization in your wallet, POST <code>eip7702Auth</code> with <code>/api/context</code>
-          (or set <code>eip7702Auth</code> in <code>context.json</code>) so Pimlico receives the same payload as in
-          <a href="https://docs.pimlico.io/references/bundler/endpoints/eth_sendUserOperation" target="_blank" rel="noopener">eth_sendUserOperation</a>.
+        <div class="card mb-16" style="padding:14px 16px;font-size:12px;line-height:1.65">
+          <div style="font-size:11px;color:var(--subtle);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Wizard</div>
+          <ol style="margin:0;padding-left:1.1rem;color:var(--text)">
+            <li style="margin-bottom:8px"><strong>Prepare key</strong> — Gateway stores a pending execute key; you get <code>executeKeyHash</code> for the chain tx.<span id="ob-wiz-s1" class="mono" style="color:var(--subtle);font-size:11px"></span></li>
+            <li style="margin-bottom:8px"><strong>EIP-7702 auth</strong> — Sign an <em>authorization</em> (delegate = <code>EchoDelegationModule</code>) so the bundler can attach <code>eip7702Auth</code>. <strong>Trust Wallet</strong> often cannot — use <strong>Skip</strong>, or <strong>paste JSON</strong> below, or the same EOA in MetaMask / Rabby for this step only.<span id="ob-wiz-s2" style="color:var(--subtle);font-size:11px"></span></li>
+            <li style="margin-bottom:8px"><strong>On-chain</strong> — Submit <code>registerInstanceAndEip7702</code> to EchoOnboarding using a <strong>minimal function fragment</strong> (only that call’s encoding — not a full contract ABI). We parse <code>instanceId</code> from the <code>PolicyRegistry</code> log.<span id="ob-wiz-s3" style="color:var(--subtle);font-size:11px"></span></li>
+            <li><strong>Finish</strong> — Promote the pending key to that <code>instanceId</code> and save context (including <code>eip7702Auth</code> if signed).<span id="ob-wiz-s4" style="color:var(--subtle);font-size:11px"></span></li>
+          </ol>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
+            <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-prepare" onclick="obWizardPrepare()">1 · Prepare key</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-sign7702" onclick="obWizardSign7702()" disabled>2 · Sign EIP-7702</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-skip7702" onclick="obWizardSkip7702()" disabled title="Continue without eip7702Auth; add it later via /api/context">2b · Skip (no wallet support)</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-onchain" onclick="obWizardOnchain()" disabled>3 · On-chain register</button>
+            <button type="button" class="btn btn-primary btn-sm" id="ob-btn-finish" onclick="obWizardFinish()" disabled>4 · Finish &amp; open Dashboard</button>
+          </div>
+          <details style="margin-top:12px;font-size:11px;color:var(--subtle);line-height:1.55">
+            <summary style="cursor:pointer;color:var(--text);font-weight:500">No wallet_sign7702Authorization (e.g. Trust): paste eip7702Auth JSON</summary>
+            <p style="margin:10px 0 8px">Must match your wallet address, chain ID, and delegate. Example shape: <code class="mono">{"address":"0x…","chainId":"0xaa36a7","nonce":"0x0","r":"0x…","s":"0x…","yParity":"0x0"}</code> (or wrap with <code>{"authorization":{…}}</code>).</p>
+            <textarea id="ob-paste-7702" rows="5" placeholder='{"address":"…","chainId":"0x…","nonce":"0x…","r":"0x…","s":"0x…","yParity":"0x0"}' style="width:100%;font-size:11px;font-family:IBM Plex Mono,monospace;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);box-sizing:border-box"></textarea>
+            <button type="button" class="btn btn-ghost btn-sm mt-8" onclick="obWizardApplyPasted7702()">Apply pasted authorization</button>
+          </details>
         </div>
+
+        <details class="card mb-16" style="padding:12px 14px;font-size:12px;line-height:1.65" id="ob-instance-help-wrap">
+          <summary style="cursor:pointer;font-weight:500;color:var(--text)">Advanced: I already have an instance ID</summary>
+          <div id="ob-instance-help-body" style="margin-top:12px;color:var(--subtle)"></div>
+          <div class="field mt-12" style="max-width:100%">
+            <label>Policy instance ID (bytes32)</label>
+            <input type="text" id="ob-instance-id" placeholder="0x + 64 hex" autocomplete="off"
+              style="font-size:12px;width:100%;font-family:'IBM Plex Mono',monospace" />
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm mt-12" onclick="createAccountManual()">Link manually only (skip wizard)</button>
+        </details>
 
         <div id="ob-error" class="alert alert-error hidden mb-16"></div>
         <div id="ob-info"  class="alert alert-info  hidden mb-16"></div>
 
         <div style="display:flex;gap:8px">
           <button class="btn btn-ghost" onclick="obGoStep(3)">← Back</button>
-          <button class="btn btn-primary" id="ob-create-btn" onclick="createAccount()" style="padding:10px 20px">
-            Link to Gateway
-          </button>
         </div>
       </div>
 
@@ -595,9 +613,9 @@
     <div style="text-align:center;max-width:360px;padding:2rem">
       <img id="connect-logo-img" src="/assets/logo-dark.png"
         style="width:48px;height:48px;border-radius:12px;object-fit:contain;margin:0 auto 20px;display:block" />
-      <div style="font-size:20px;font-weight:300;margin-bottom:8px">Connect your wallet</div>
-      <div style="font-size:12px;color:var(--subtle);line-height:1.7;margin-bottom:24px">Connect the wallet that owns your Echo policy instance (EOA) to view and manage your policy.</div>
-      <button class="btn btn-primary" onclick="showWalletPicker()" style="width:100%;justify-content:center;padding:10px">Connect Wallet</button>
+      <div style="font-size:20px;font-weight:300;margin-bottom:8px">Log in to Echo</div>
+      <div style="font-size:12px;color:var(--subtle);line-height:1.7;margin-bottom:24px">Sign in with your email to create or access your embedded wallet (no browser extension needed).</div>
+      <button class="btn btn-primary" onclick="showWalletPicker()" style="width:100%;justify-content:center;padding:10px">Log in with Privy</button>
       <div id="connect-error" class="alert alert-error hidden mt-16" style="text-align:left"></div>
     </div>
   </div>
@@ -612,7 +630,28 @@
 
 <!-- MODALS -->
 <div class="modal-overlay" id="modal-account-rename"><div class="modal" style="width:320px"><div class="modal-header"><div class="modal-title" id="modal-account-rename-title">Rename account</div><button class="modal-close" onclick="closeModal('modal-account-rename')">×</button></div><div class="field"><label>Account name</label><input type="text" id="modal-account-rename-input" maxlength="40" placeholder="e.g. Trading Bot, Research"/><div class="field-hint">Only stored locally in this browser.</div></div><div class="flex gap-8" style="margin-top:16px"><button class="btn btn-primary" onclick="saveRenameAccount()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-account-rename')">Cancel</button></div></div></div>
-<div class="modal-overlay" id="modal-wallet"><div class="modal" style="width:320px"><div class="modal-header"><div class="modal-title">Connect Wallet</div><button class="modal-close" onclick="closeModal('modal-wallet')">×</button></div><div id="modal-wallet-list" style="display:flex;flex-direction:column;gap:8px"></div></div></div>
+<div class="modal-overlay" id="modal-privy"><div class="modal" style="width:380px">
+  <div class="modal-header"><div class="modal-title">Log in with Privy</div><button class="modal-close" onclick="closeModal('modal-privy')">×</button></div>
+  <!-- Step: email input -->
+  <div id="privy-step-email">
+    <p style="font-size:11px;color:var(--subtle);line-height:1.55;margin:0 0 16px">Enter your email — Privy will send a one-time code. Your embedded wallet (EOA) is created automatically.</p>
+    <div class="field"><label>Email address</label><input type="email" id="privy-email" placeholder="you@example.com" autocomplete="email" onkeydown="if(event.key==='Enter')privySendCode()" /></div>
+    <div id="privy-email-msg" class="hidden mb-16"></div>
+    <button class="btn btn-primary" style="width:100%" id="privy-send-btn" onclick="privySendCode()">Send code</button>
+  </div>
+  <!-- Step: OTP input -->
+  <div id="privy-step-otp" class="hidden">
+    <p style="font-size:11px;color:var(--subtle);line-height:1.55;margin:0 0 16px">Enter the 6-digit code sent to <strong id="privy-otp-email-label"></strong>.</p>
+    <div class="field"><label>Verification code</label><input type="text" id="privy-otp" maxlength="6" placeholder="123456" autocomplete="one-time-code" style="letter-spacing:.25em;font-size:18px;font-family:'IBM Plex Mono',monospace" onkeydown="if(event.key==='Enter')privyVerifyCode()" /></div>
+    <div id="privy-otp-msg" class="hidden mb-16"></div>
+    <div class="flex gap-8"><button class="btn btn-ghost" onclick="privyGoBack()">← Back</button><button class="btn btn-primary" style="flex:1" id="privy-verify-btn" onclick="privyVerifyCode()">Log in</button></div>
+  </div>
+  <!-- Step: loading/setup -->
+  <div id="privy-step-loading" class="hidden" style="text-align:center;padding:24px 0">
+    <div class="spinner" style="width:20px;height:20px;margin:0 auto 12px"></div>
+    <div style="font-size:12px;color:var(--subtle)" id="privy-loading-text">Setting up wallet…</div>
+  </div>
+</div></div>
 
 <div class="modal-overlay" id="modal-global"><div class="modal"><div class="modal-header"><div class="modal-title">Edit Daily Cap</div><button class="modal-close" onclick="closeModal('modal-global')">×</button></div><div class="field"><label>Global Daily Cap (USDC)</label><input type="number" id="mg-daily" placeholder="1000" min="1"/><div class="field-hint">Current: <span id="mg-daily-cur">—</span></div></div><div id="mg-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" onclick="saveGlobalDaily()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-global')">Cancel</button></div></div></div>
 
@@ -628,9 +667,50 @@
 'use strict';
 let gatewayConfig=null,currentPolicy=null,currentKey=null,editMode=false,pendingTxQueue=null,accountDropdownOpen=false,footerMenuOpen=false;
 let allKeysForCurrentWallet=[];
-const detectedWallets=new Map();
-window.addEventListener('eip6963:announceProvider',e=>detectedWallets.set(e.detail.info.rdns,e.detail));
-window.dispatchEvent(new Event('eip6963:requestProvider'));
+// ── Privy embedded wallet ────────────────────────────────────────────────
+let _privyClient=null;
+let _privyEmail=null;
+
+async function getPrivyClient(){
+  if(_privyClient)return _privyClient;
+  const appId=gatewayConfig?.privyAppId;
+  if(!appId)throw new Error('PRIVY_APP_ID not configured in .env');
+
+  // Dynamic import from esm.sh CDN — works without a build step
+  const mod=await import('https://esm.sh/@privy-io/js-sdk-core');
+  const Privy=mod.default;
+  const {LocalStorage,getUserEmbeddedEthereumWallet}=mod;
+  window._getUserEmbeddedEthereumWallet=getUserEmbeddedEthereumWallet;
+
+  // Hidden iframe for embedded wallet secure context (MPC signing)
+  const iframe=document.createElement('iframe');
+  iframe.style.cssText='display:none;position:fixed;width:1px;height:1px;';
+  iframe.setAttribute('allow','clipboard-write');
+  document.body.appendChild(iframe);
+
+  const privy=new Privy({
+    appId,
+    storage:new LocalStorage(),
+    embeddedWalletMessagePoster:{
+      postMessage:(msg,origin,transfer)=>{
+        iframe.contentWindow?.postMessage(msg,origin,transfer?[transfer]:undefined);
+      }
+    }
+  });
+
+  // Forward iframe → SDK messages
+  window.addEventListener('message',e=>{
+    if(e.source===iframe.contentWindow)privy.embeddedWallet.onMessage(e.data);
+  });
+
+  await privy.initialize();
+  iframe.src=privy.embeddedWallet.getURL();
+  // Wait up to 10 s for iframe to be ready; continue anyway on timeout
+  await privy.embeddedWallet.ping(10000).catch(()=>{});
+
+  _privyClient=privy;
+  return privy;
+}
 
 const TOKENS={
   // Echo mock tokens (Sepolia MVP)
@@ -687,7 +767,7 @@ function navigate(page){
   if(page==='sessions')loadSessions();
   if(page==='settings')renderSettings();
   if(page==='overview')renderOverview();
-  if(page==='onboarding'){obTokens=[];obGoStep(1);}
+  if(page==='onboarding'){obTokens=[];obResetOnboardingWizard();obGoStep(1);}
 }
 
 async function init(){
@@ -969,43 +1049,102 @@ async function migrateLegacyAccount(){
 }
 
 function showWalletPicker(){
-  // Re-request provider announcements each time picker is opened
-  window.dispatchEvent(new Event('eip6963:requestProvider'));
-  setTimeout(()=>{
-    // Also add window.ethereum as fallback if no EIP-6963 wallets found
-    if(window.ethereum&&!detectedWallets.size){
-      const name=window.ethereum.isMetaMask?'MetaMask':window.ethereum.isOKXWallet?'OKX Wallet':window.ethereum.isCoinbaseWallet?'Coinbase Wallet':'Browser Wallet';
-      detectedWallets.set('legacy',{info:{name,icon:'',rdns:'legacy'},provider:window.ethereum});
-    }
-    if(!detectedWallets.size){
-      showOb('No wallet found. Please install MetaMask or OKX Wallet.','error');
-      return;
-    }
-    const list=document.getElementById('modal-wallet-list');
-    list.innerHTML='<div style="font-size:10px;color:var(--subtle);margin-bottom:8px;letter-spacing:.08em">'+detectedWallets.size+' wallet(s) detected</div>';
-    detectedWallets.forEach(({info,provider})=>{
-      const btn=document.createElement('button');btn.className='btn btn-secondary';
-      btn.style.cssText='width:100%;justify-content:flex-start;gap:10px;padding:10px 14px;margin-bottom:4px';
-      const iconHtml=info.icon
-        ?`<img src="${info.icon}" style="width:22px;height:22px;border-radius:5px" onerror="this.style.display='none'"/>`
-        :'<div style="width:22px;height:22px;background:var(--muted);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--subtle)">?</div>';
-      btn.innerHTML=iconHtml+`<div style="text-align:left"><div style="font-size:13px">${info.name}</div><div style="font-size:10px;color:var(--subtle)">${info.rdns||'legacy'}</div></div>`;
-      btn.onclick=()=>{closeModal('modal-wallet');connectWithProvider(provider,info.name)};
-      list.appendChild(btn);
-    });
-    openModal('modal-wallet');
-  },200);
+  // Reset modal state
+  privyShowStep('email');
+  document.getElementById('privy-email').value='';
+  document.getElementById('privy-otp').value='';
+  document.getElementById('privy-email-msg').classList.add('hidden');
+  document.getElementById('privy-otp-msg').classList.add('hidden');
+  openModal('modal-privy');
 }
-async function connectWithProvider(provider,name){
+
+function privyShowStep(step){
+  ['email','otp','loading'].forEach(s=>{
+    const el=document.getElementById('privy-step-'+s);
+    if(el)el.classList.toggle('hidden',s!==step);
+  });
+}
+function privySetMsg(id,msg,type){
+  const el=document.getElementById(id);if(!el)return;
+  el.className='alert alert-'+(type==='error'?'error':type==='warn'?'warn':'info')+' mb-16';
+  el.textContent=msg;el.classList.remove('hidden');
+}
+function privyGoBack(){
+  privyShowStep('email');
+  document.getElementById('privy-otp-msg').classList.add('hidden');
+}
+
+async function privySendCode(){
+  const email=(document.getElementById('privy-email').value||'').trim();
+  if(!email){privySetMsg('privy-email-msg','Enter your email address.','warn');return}
+  const btn=document.getElementById('privy-send-btn');
+  btn.disabled=true;btn.textContent='Sending…';
   try{
-    const accounts=await provider.request({method:'eth_requestAccounts'});
-    if(!accounts||!accounts[0]){showOb('No accounts returned from wallet.','error');return}
+    const privy=await getPrivyClient();
+    await privy.auth.email.sendCode(email);
+    _privyEmail=email;
+    document.getElementById('privy-otp-email-label').textContent=email;
+    privyShowStep('otp');
+    document.getElementById('privy-otp').focus();
+  }catch(e){
+    privySetMsg('privy-email-msg',e.message||String(e),'error');
+  }finally{btn.disabled=false;btn.textContent='Send code'}
+}
+
+async function privyVerifyCode(){
+  const code=(document.getElementById('privy-otp').value||'').trim();
+  if(!code){privySetMsg('privy-otp-msg','Enter the 6-digit code.','warn');return}
+  const btn=document.getElementById('privy-verify-btn');
+  btn.disabled=true;btn.textContent='Verifying…';
+  try{
+    const privy=await getPrivyClient();
+    const result=await privy.auth.email.loginWithCode(
+      _privyEmail,code,'login-or-sign-up',
+      {embedded:{ethereum:{createOnLogin:'users-without-wallets'}}}
+    );
+    const user=result.user??result;
+    privyShowStep('loading');
+
+    // Get or create embedded wallet
+    let wallet=window._getUserEmbeddedEthereumWallet?.(user)??null;
+    if(!wallet){
+      document.getElementById('privy-loading-text').textContent='Creating wallet…';
+      const r2=await privy.embeddedWallet.create({recoveryMethod:'privy'});
+      wallet=window._getUserEmbeddedEthereumWallet?.(r2.user??r2)??null;
+    }
+    if(!wallet?.address)throw new Error('Could not retrieve embedded wallet address');
+
+    document.getElementById('privy-loading-text').textContent='Loading wallet…';
+    const provider=await privy.embeddedWallet.getProvider(wallet);
+
+    closeModal('modal-privy');
+    await _connectWithPrivyProvider(provider,'Privy',wallet.address);
+
+    // Verify identity token on backend (fire-and-forget)
+    privy.getIdentityToken().then(tok=>{
+      if(tok)fetch('/api/auth/privy',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({identityToken:tok})}).catch(()=>{});
+    }).catch(()=>{});
+  }catch(e){
+    privyShowStep('otp');
+    privySetMsg('privy-otp-msg',e.message||String(e),'error');
+  }finally{btn.disabled=false;btn.textContent='Log in'}
+}
+
+async function _connectWithPrivyProvider(provider,name,knownAddress){
+  try{
+    let eoaAddr=knownAddress;
+    if(!eoaAddr){
+      const accounts=await provider.request({method:'eth_requestAccounts'});
+      eoaAddr=accounts?.[0];
+    }
+    if(!eoaAddr){showOb('No address returned from Privy wallet.','error');return}
     window._echoProvider=provider;
     window._echoWalletName=name;
-    const eoaAddr=accounts[0];
+    window._echoWalletIsPrivy=true;
     obOnWalletConnected(eoaAddr,name);
     if(typeof window._echoAfterConnect==='function'){await window._echoAfterConnect();window._echoAfterConnect=null;}
-  }catch(e){showOb('Connection rejected: '+(e.message||e),'error')}
+  }catch(e){showOb('Privy connection error: '+(e.message||e),'error')}
 }
 
 function renderOverview(){
@@ -1528,18 +1667,376 @@ const TPL={
 let selectedTemplate=null;
 let obTokens=[];
 let obCurrentStep=1;
+/** Guided onboarding: pending execute key → 7702 auth → chain tx → finalize */
+let obPendingId=null;
+let obExecuteKeyHash=null;
+let obEip7702Auth=null;
+let obChainInstanceId=null;
+
+const ONBOARDING_REGISTER_ABI=[
+  'function registerInstanceAndEip7702((address owner,bytes32 templateId,bytes32 executeKeyHash,address[] initialTokens,uint256[] maxPerOps,uint256[] maxPerDays,address[] targets,bytes4[] selectors,uint256 explorationBudget,uint256 explorationPerTx,uint256 globalMaxPerDay,uint256 globalTotalBudget,uint64 expiry)) external returns (bytes32)',
+];
+
+function obResetOnboardingWizard(){
+  if(obPendingId&&!obChainInstanceId){
+    const id=obPendingId;
+    fetch('/api/onboarding/pending/'+encodeURIComponent(id),{method:'DELETE'}).catch(()=>{});
+  }
+  obPendingId=null;
+  obExecuteKeyHash=null;
+  obEip7702Auth=null;
+  obChainInstanceId=null;
+  ['ob-wiz-s1','ob-wiz-s2','ob-wiz-s3','ob-wiz-s4'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='';});
+  const b2=document.getElementById('ob-btn-sign7702');if(b2)b2.disabled=true;
+  const bs=document.getElementById('ob-btn-skip7702');if(bs)bs.disabled=true;
+  const b3=document.getElementById('ob-btn-onchain');if(b3)b3.disabled=true;
+  const b4=document.getElementById('ob-btn-finish');if(b4)b4.disabled=true;
+}
+
+function obTemplateBytes32(){
+  const t=selectedTemplate;
+  const tpl=gatewayConfig?.templates;
+  if(t&&tpl&&tpl[t])return tpl[t];
+  return tpl?.standard ?? null;
+}
+
+async function ensureWalletChain(){
+  if(!gatewayConfig||!window._echoProvider)return;
+  const want='0x'+Number(gatewayConfig.chainId).toString(16);
+  const cur=await window._echoProvider.request({method:'eth_chainId'});
+  const c=typeof cur==='string'?cur.toLowerCase():('0x'+Number(cur).toString(16)).toLowerCase();
+  if(c===want.toLowerCase())return;
+  await window._echoProvider.request({method:'wallet_switchEthereumChain',params:[{chainId:want}]});
+}
+
+function normalizeYParity(yParity){
+  if(yParity===undefined||yParity===null)throw new Error('Missing yParity / v in authorization signature');
+  const yBi=typeof yParity==='bigint'?yParity:BigInt(yParity);
+  if(yBi===27n||yBi===28n)return yBi-27n;
+  return yBi;
+}
+
+/** Pimlico-shaped payload from wallet JSON-RPC (MetaMask / others). */
+function wallet7702ResponseToBundlerPayload(raw,fallbackAddress,fallbackChainId,fallbackNonce){
+  const inner=raw?.authorization??raw?.data?.authorization??raw?.result?.authorization??raw;
+  if(!inner||typeof inner!=='object')throw new Error('Invalid wallet EIP-7702 response');
+  const address=inner.address??inner.contract??fallbackAddress;
+  const chainId=inner.chain_id??inner.chainId??fallbackChainId;
+  const nonce=inner.nonce??fallbackNonce;
+  const r=inner.r;
+  const s=inner.s;
+  const yParity=inner.yParity??inner.y_parity??inner.v;
+  const pad32=(h)=>ethers.zeroPadValue(typeof h==='bigint'?ethers.toBeHex(h):h,32);
+  const yNorm=normalizeYParity(yParity);
+  return{
+    address:ethers.getAddress(address),
+    chainId:ethers.toBeHex(BigInt(chainId)),
+    nonce:ethers.toBeHex(BigInt(nonce)),
+    r:pad32(r),
+    s:pad32(s),
+    yParity:ethers.toBeHex(yNorm,1),
+  };
+}
+
+/**
+ * Injected wallets usually do not expose `signer.authorize()` to ethers; call vendor RPCs first.
+ * Privy embedded wallets route unknown methods to their JSON-RPC proxy (sepolia.rpc.privy.systems)
+ * which does not implement wallet_sign7702Authorization — skip all attempts immediately.
+ */
+async function sign7702ViaWallet(provider,{delegate,chainId,from}){
+  if(window._echoWalletIsPrivy){
+    throw new Error('Privy embedded wallets do not support wallet_sign7702Authorization via their EIP-1193 provider. Use Step 2b · Skip to proceed without eip7702Auth.');
+  }
+  const ncHex=await provider.request({method:'eth_getTransactionCount',params:[from,'pending']});
+  const nonce=Number(BigInt(ncHex));
+  const chHex='0x'+Number(chainId).toString(16);
+  const nHex='0x'+nonce.toString(16);
+  const attempts=[
+    {method:'wallet_sign7702Authorization',params:[{contract:delegate,chain_id:chainId,nonce}]},
+    {method:'wallet_sign7702Authorization',params:[{from,contract:delegate,chain_id:chainId,nonce}]},
+    {method:'wallet_sign7702Authorization',params:[{contractAddress:delegate,chainId,nonce}]},
+    {method:'eth_sign7702Authorization',params:[{contract:delegate,chain_id:chainId,nonce}]},
+    {method:'eth_sign7702Authorization',params:[{from,contract:delegate,chain_id:chainId,nonce}]},
+    {method:'eth_sign7702Authorization',params:[{contractAddress:delegate,chainId,nonce}]},
+    {method:'wallet_sign7702Authorization',params:[{address:delegate,chainId:chHex,nonce:nHex}]},
+    {method:'eth_sign7702Authorization',params:[{address:delegate,chainId:chHex,nonce:nHex}]},
+    /* Some wallets use a generic method name (EIP / viem wording); params vary by vendor */
+    {method:'wallet_signAuthorization',params:[{contractAddress:delegate,chainId,nonce}]},
+    {method:'wallet_signAuthorization',params:[{address:delegate,chainId:chHex,nonce:nHex}]},
+    {method:'wallet_signAuthorization',params:[{delegate:delegate,chainId:chHex,nonce:nHex}]},
+  ];
+  let lastErr;
+  for(const q of attempts){
+    try{
+      const raw=await provider.request(q);
+      return wallet7702ResponseToBundlerPayload(raw,delegate,chainId,nonce);
+    }catch(e){lastErr=e}
+  }
+  throw lastErr??new Error('Wallet does not support EIP-7702 authorization RPCs');
+}
+
+function obBuildOnboardingTuple(executeKeyHashHex){
+  const daily=Number(document.getElementById('ob-global-daily')?.value);
+  const total=Number(document.getElementById('ob-global-total')?.value);
+  const explB=Number(document.getElementById('ob-explore-budget')?.value)||0;
+  const explT=Number(document.getElementById('ob-explore-pertx')?.value)||0;
+  const days=Number(document.getElementById('ob-expiry-days')?.value)||90;
+  const templateId=obTemplateBytes32();
+  if(!templateId)throw new Error('Missing template bytes32 — set TEMPLATE_* in .env and pick a template in the wizard');
+  const owner=window._obWizardOwner;
+  if(!owner)throw new Error('Wallet address not available');
+  const tokens=obTokens.map(t=>ethers.getAddress(t.token));
+  const maxPerOps=obTokens.map(t=>BigInt(Math.round(Number(t.perOp)*1e6)));
+  const maxPerDays=obTokens.map(t=>BigInt(Math.round(Number(t.perDay)*1e6)));
+  const router=ethers.getAddress(gatewayConfig.contracts.uniswapV3Router);
+  const selectors=['0x414bf389','0x4aa4a4fa'];
+  const explorationBudget=BigInt(Math.round(explB*1e6));
+  const explorationPerTx=BigInt(Math.round(explT*1e6));
+  const globalMaxPerDay=BigInt(Math.round(daily*1e6));
+  const globalTotalBudget=BigInt(Math.round(total*1e6));
+  const expiry=BigInt(Math.floor(Date.now()/1000)+days*86400);
+  if(expiry>18446744073709551615n)throw new Error('expiry exceeds uint64');
+  return{
+    owner,
+    templateId,
+    executeKeyHash:executeKeyHashHex,
+    initialTokens:tokens,
+    maxPerOps,
+    maxPerDays,
+    targets:[router],
+    selectors,
+    explorationBudget,
+    explorationPerTx,
+    globalMaxPerDay,
+    globalTotalBudget,
+    expiry,
+  };
+}
+
+function parseInstanceIdFromReceipt(receipt){
+  if(!receipt?.logs||!gatewayConfig)return null;
+  const want=gatewayConfig.contracts.policyRegistry.toLowerCase();
+  const iface=new ethers.Interface(['event InstanceRegistered(bytes32 indexed instanceId, address indexed owner, bytes32 templateId)']);
+  const topic0=iface.getEvent('InstanceRegistered').topicHash;
+  for(const log of receipt.logs){
+    const la=(log.address||'').toLowerCase();
+    if(la!==want)continue;
+    const t0=log.topics?.[0];
+    if(t0!==topic0)continue;
+    return log.topics[1];
+  }
+  return null;
+}
+
+async function obWizardPrepare(){
+  hideOb();
+  if(!window._echoProvider){showOb('Connect your wallet first.','error');return}
+  if(!gatewayConfig){showOb('Could not load gateway config.','error');return}
+  try{
+    await ensureWalletChain();
+    const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
+    const owner=accounts[0];
+    window._obWizardOwner=owner;
+    obChainInstanceId=null;
+    obEip7702Auth=null;
+    const w2=document.getElementById('ob-wiz-s2');if(w2)w2.textContent='';
+    const w3=document.getElementById('ob-wiz-s3');if(w3)w3.textContent='';
+    const w4=document.getElementById('ob-wiz-s4');if(w4)w4.textContent='';
+    document.getElementById('ob-btn-onchain').disabled=true;
+    document.getElementById('ob-btn-finish').disabled=true;
+    const accountName=document.getElementById('ob-account-name')?.value?.trim()||'My Account';
+    const r=await fetch('/api/onboarding/prepare',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({accountAddress:owner,ownerAddress:owner,name:accountName,label:selectedTemplate??'custom'})}).then(x=>x.json());
+    if(r.error)throw new Error(r.error);
+    obPendingId=r.pendingId;
+    obExecuteKeyHash=r.executeKeyHash;
+    document.getElementById('ob-wiz-s1').textContent=' ✓';
+    document.getElementById('ob-btn-sign7702').disabled=false;
+    const sk=document.getElementById('ob-btn-skip7702');if(sk)sk.disabled=false;
+    showOb('Execute key ready — run Step 3 on-chain before Finish. If you "Prepare" again, you must sign a new Step 3 tx (new instanceId).','info');
+  }catch(err){showOb(err.message??String(err),'error')}
+}
+
+function obWizardSkip7702(){
+  hideOb();
+  if(!obExecuteKeyHash){showOb('Complete step 1 first.','error');return}
+  obEip7702Auth=null;
+  const w2=document.getElementById('ob-wiz-s2');if(w2)w2.textContent=' (skipped)';
+  document.getElementById('ob-btn-onchain').disabled=false;
+  showOb('Step 2 skipped — many wallets (e.g. Trust) do not support 7702 signing RPCs. If Pimlico rejects your UserOp, use “paste JSON” below, sign the auth in MetaMask/OKX, or POST /api/context with eip7702Auth.','info');
+}
+
+/** Paste Pimlico-shaped EIP-7702 auth when the injected wallet has no wallet_sign7702Authorization (e.g. Trust). */
+function obWizardApplyPasted7702(){
+  hideOb();
+  if(!obExecuteKeyHash){showOb('Complete step 1 first.','error');return}
+  if(!gatewayConfig?.contracts?.echoDelegationModule){showOb('Gateway config missing echoDelegationModule.','error');return}
+  const ta=document.getElementById('ob-paste-7702');
+  const text=(ta?.value??'').trim();
+  if(!text){showOb('Paste JSON first.','error');return}
+  let parsed;
+  try{parsed=JSON.parse(text)}catch(e){showOb('Invalid JSON: '+(e.message||String(e)),'error');return}
+  try{
+    const delegate=gatewayConfig.contracts.echoDelegationModule;
+    const chainId=Number(gatewayConfig.chainId);
+    const payload=wallet7702ResponseToBundlerPayload(parsed,delegate,chainId,0);
+    const wantDel=delegate.toLowerCase();
+    if(payload.address.toLowerCase()!==wantDel){
+      showOb('JSON address must be EchoDelegationModule ('+delegate.slice(0,10)+'…), got '+payload.address.slice(0,10)+'…','error');
+      return
+    }
+    const wantCh='0x'+chainId.toString(16).toLowerCase();
+    if(payload.chainId.toLowerCase()!==wantCh){
+      showOb('JSON chainId must match gateway ('+wantCh+'), got '+payload.chainId,'error');
+      return
+    }
+    obEip7702Auth=payload;
+    document.getElementById('ob-wiz-s2').textContent=' ✓ (pasted)';
+    document.getElementById('ob-btn-onchain').disabled=false;
+    showOb('Applied pasted eip7702Auth — it will be saved via /api/context when you click Finish.','info');
+  }catch(err){showOb(err.message??String(err),'error')}
+}
+
+async function obWizardSign7702(){
+  hideOb();
+  if(!obExecuteKeyHash){showOb('Complete step 1 first.','error');return}
+  if(!window._echoProvider){showOb('Connect your wallet first.','error');return}
+  try{
+    await ensureWalletChain();
+    const delegate=gatewayConfig.contracts.echoDelegationModule;
+    const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
+    const from=accounts[0];
+    window._obWizardOwner=from;
+    const chainId=Number(gatewayConfig.chainId);
+    /* Do not call ethers signer.authorize() — BrowserProvider’s JsonRpcSigner throws UNSUPPORTED_OPERATION (noise in console / some UIs). */
+    let payload=null;
+    let rpcErr=null;
+    try{
+      payload=await sign7702ViaWallet(window._echoProvider,{delegate,chainId,from});
+    }catch(e){rpcErr=e}
+    if(!payload){
+      const isPrivy=window._echoWalletIsPrivy;
+      const hint=(rpcErr&&(rpcErr.message||String(rpcErr))&&!isPrivy)?` Wallet: ${rpcErr.message||String(rpcErr)}`:'';
+      if(isPrivy){
+        showOb(
+          'Privy embedded wallets do not support EIP-7702 authorization signing via standard browser RPCs — ' +
+          'wallet_sign7702Authorization is a wallet-side method that Privy\'s iframe has not yet implemented. ' +
+          'Click "2b · Skip" to continue to the on-chain step without eip7702Auth. ' +
+          'If your bundler later requires it, add it via POST /api/context.',
+          'info'
+        );
+      }else{
+        showOb('This is a limitation of the injected wallet extension, not your Sepolia RPC URL in .env: Step 2 uses ethereum.request(…) handled inside the browser extension — it is not sent to Infura/Alchemy. Trust / older MetaMask builds often omit or reject wallet_sign7702Authorization. Update MetaMask, confirm Sepolia supports 7702 for your build, or use Step 2b · Skip then paste eip7702Auth or POST /api/context.'+hint,'info');
+      }
+      document.getElementById('ob-btn-onchain').disabled=false;
+      return;
+    }
+    obEip7702Auth=payload;
+    document.getElementById('ob-wiz-s2').textContent=' ✓';
+    document.getElementById('ob-btn-onchain').disabled=false;
+    showOb('EIP-7702 authorization signed — it will be saved via /api/context when you finish.','info');
+  }catch(err){showOb(err.message??String(err),'error')}
+}
+
+function obWizardOnchain(){
+  hideOb();
+  if(!gatewayConfig?.echoOnboarding){showOb('ECHO_ONBOARDING is not set — add it to .env or use manual link below.','error');return}
+  if(!obExecuteKeyHash){showOb('Complete step 1 first.','error');return}
+  let tuple;
+  try{tuple=obBuildOnboardingTuple(obExecuteKeyHash)}catch(e){showOb(e.message??String(e),'error');return}
+  const iface=new ethers.Interface(ONBOARDING_REGISTER_ABI);
+  const calldata=iface.encodeFunctionData('registerInstanceAndEip7702',[tuple]);
+  openPendingTx({
+    to:gatewayConfig.echoOnboarding,
+    calldata,
+    desc:'EchoOnboarding.registerInstanceAndEip7702 — register policy + EIP-7702 binding',
+    onSuccess(receipt){
+      const iid=receipt?parseInstanceIdFromReceipt(receipt):null;
+      if(!iid){showOb('InstanceRegistered not found in receipt — check network and PolicyRegistry address.','error');return}
+      obChainInstanceId=iid;
+      document.getElementById('ob-wiz-s3').textContent=' ✓ '+iid.slice(0,10)+'…';
+      document.getElementById('ob-btn-finish').disabled=false;
+      showOb('instanceId parsed — click Finish to open the Dashboard.','info');
+    },
+  });
+}
+
+async function obWizardFinish(){
+  hideOb();
+  if(!obPendingId||!obChainInstanceId){showOb('Complete steps 1 and 3 first.','error');return}
+  const btn=document.getElementById('ob-btn-finish');
+  if(btn){btn.disabled=true;btn.textContent='Working…'}
+  try{
+    const owner=window._obWizardOwner||(await window._echoProvider.request({method:'eth_requestAccounts'}))[0];
+    const accountName=document.getElementById('ob-account-name')?.value?.trim()||'My Account';
+    const fin=await fetch('/api/onboarding/finalize',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        pendingId:obPendingId,
+        instanceId:obChainInstanceId,
+        accountAddress:owner,
+        ownerAddress:owner,
+        name:accountName,
+        label:selectedTemplate??'custom',
+      })}).then(r=>r.json());
+    if(fin.error)throw new Error(fin.error);
+    await fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({instanceId:obChainInstanceId,...(obEip7702Auth?{eip7702Auth:obEip7702Auth}:{})})});
+    document.getElementById('ob-wiz-s4').textContent=' ✓';
+    showOb('✓ Done — loading Dashboard…','info');
+    window._echoProvider=null;
+    window._echoWalletName=null;
+    window._echoWalletIsPrivy=false;
+    obResetOnboardingWizard();
+    await loadAllAccounts();
+    navigate('overview');
+  }catch(err){
+    showOb(err.message??String(err),'error');
+    if(btn){btn.disabled=false;btn.textContent='4 · Finish & open Dashboard'}
+  }
+}
+
+function explorerAddressUrl(addr){
+  if(!addr||!gatewayConfig)return'#';
+  const id=Number(gatewayConfig.chainId);
+  const host={11155111:'sepolia.etherscan.io',1:'etherscan.io'}[id]||'etherscan.io';
+  return'https://'+host+'/address/'+addr;
+}
+
+function obRefreshStep4Help(){
+  const body=document.getElementById('ob-instance-help-body');
+  if(!body)return;
+  if(!gatewayConfig){
+    body.innerHTML='<p>Loading gateway config…</p>';
+    return;
+  }
+  const pr=gatewayConfig.contracts?.policyRegistry;
+  const eo=gatewayConfig.echoOnboarding;
+  const prLink=pr?explorerAddressUrl(pr):'';
+  const eoLink=eo?explorerAddressUrl(eo):'';
+  const links=[];
+  if(pr)links.push('<a href="'+prLink+'" target="_blank" rel="noopener">PolicyRegistry (explorer)</a>');
+  if(eo)links.push('<a href="'+eoLink+'" target="_blank" rel="noopener">EchoOnboarding (explorer)</a>');
+  body.innerHTML=
+    '<p style="margin:0 0 8px">If you already registered on-chain elsewhere, paste the <strong>instanceId</strong> below and use <strong>Link manually</strong>. The <strong>PolicyRegistry</strong> emits <code>InstanceRegistered</code> in that transaction.</p>'
+    +'<ul style="margin:0;padding-left:1.15rem">'
+    +'<li>Block explorer → transaction → <strong>Logs</strong> → <code>PolicyRegistry</code> → <code>InstanceRegistered</code> → <strong>topics[1]</strong> is the <code>instanceId</code> (66 chars).</li>'
+    +'<li>Manual link generates a <strong>new</strong> execute key in the Gateway — the on-chain <code>executeKeyHash</code> must match. Use manual mode only if you understand that constraint.</li>'
+    +'</ul>'
+    +(links.length?'<p style="margin:10px 0 0">'+links.join(' · ')+'</p>':'');
+}
 
 function obGoStep(n){
   for(let i=1;i<=4;i++){const p=document.getElementById('ob-panel-'+i);if(p)p.classList.toggle('hidden',i!==n)}
   obCurrentStep=n;
   const lbl=document.getElementById('ob-step-label');if(lbl)lbl.textContent='Step '+n+' of 4';
   const bar=document.getElementById('ob-progress-bar');if(bar)bar.style.width=(n/4*100)+'%';
+  if(n===4)obRefreshStep4Help();
 }
 
 function obNextStep(current){
   if(current===1&&!window._echoProvider){showOb('Connect your wallet first.','error');return}
   if(current===2){const nm=document.getElementById('ob-account-name')?.value?.trim();if(!nm){showOb('Enter an account name.','error');return}}
-  if(current===3){if(!obValidatePolicy())return;obBuildReview()}
+  if(current===3){if(!obValidatePolicy())return;obBuildReview();obResetOnboardingWizard()}
   obGoStep(current+1);
 }
 
@@ -1644,13 +2141,12 @@ function obBuildReview(){
     row('Network','Sepolia Testnet');
 }
 
-async function createAccount(){
+async function createAccountManual(){
   if(!window._echoProvider){showOb('Connect your wallet first.','error');return}
   const accountName=document.getElementById('ob-account-name')?.value?.trim()||'My Account';
   const instanceId=document.getElementById('ob-instance-id')?.value?.trim()??'';
   if(!instanceId.startsWith('0x')||instanceId.length!==66){showOb('Enter a valid policy instance ID (0x + 64 hex).','error');return}
-  const btn=document.getElementById('ob-create-btn');
-  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Linking…';hideOb();
+  hideOb();
   try{
     const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
     const owner=accounts[0];
@@ -1659,12 +2155,13 @@ async function createAccount(){
     }).then(r=>r.json());
     if(keyRes.error)throw new Error(keyRes.error);
     await fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instanceId})});
-    showOb('✓ Linked! Loading dashboard…','info');
+    showOb('✓ Linked — loading Dashboard…','info');
     window._echoProvider=null;
     window._echoWalletName=null;
+    window._echoWalletIsPrivy=false;
     await loadAllAccounts();
     navigate('overview');
-  }catch(err){showOb(err.message??String(err),'error');btn.disabled=false;btn.textContent='Link to Gateway'}
+  }catch(err){showOb(err.message??String(err),'error')}
 }
 
 function showOb(msg,type){
@@ -1750,9 +2247,9 @@ async function signPendingTx(){
     showResult('ptx-result',`Gas: ${gasBig.toString()} (est ${estBig!==null?estBig.toString():'n/a'}) — waiting wallet confirmation…`,'info');
     const txHash=await provider.request({method:'eth_sendTransaction',params:[txReq]});
     showResult('ptx-result','Submitted: '+txHash.slice(0,10)+'… — waiting','info');
-    await waitForTx(txHash);
+    const receipt=await waitForTx(txHash);
     showResult('ptx-result','✓ Confirmed','info');
-    setTimeout(()=>{closeModal('modal-pending-tx');document.getElementById('ptx-sign-btn').disabled=false;onSuccess?.()},800);
+    setTimeout(()=>{closeModal('modal-pending-tx');document.getElementById('ptx-sign-btn').disabled=false;onSuccess?.(receipt)},800);
   }catch(err){showResult('ptx-result',err.message,'error');document.getElementById('ptx-sign-btn').disabled=false}
 }
 
@@ -1765,8 +2262,6 @@ document.querySelectorAll('.modal-overlay').forEach(el=>el.addEventListener('cli
 
 function setBar(id,pct){const el=document.getElementById(id);el.style.width=pct+'%';el.className='progress-fill '+pctClass(pct)}
 function showResult(elId,msg,type){const el=document.getElementById(elId);if(!el)return;el.className=type==='error'?'alert alert-error':type==='info'?'alert alert-info':'alert alert-warn';el.textContent=msg;el.classList.remove('hidden')}
-function showOb(msg,type){document.getElementById('ob-info').classList.add('hidden');document.getElementById('ob-error').classList.add('hidden');document.getElementById(type==='error'?'ob-error':'ob-info').textContent=msg;document.getElementById(type==='error'?'ob-error':'ob-info').classList.remove('hidden')}
-function hideOb(){document.getElementById('ob-error').classList.add('hidden');document.getElementById('ob-info').classList.add('hidden')}
 
 // ── Theme ─────────────────────────────────────────────────────────────────
 function initTheme(){

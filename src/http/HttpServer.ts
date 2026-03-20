@@ -22,6 +22,7 @@ import { registerSessionRoutes }  from './routes/sessions.js';
 import { registerKeystoreRoutes } from './routes/keystore.js';
 import { registerRpcProxyRoutes } from './routes/rpcProxy.js';
 import { registerSettingsRoutes } from './routes/settings.js';
+import { registerAuthRoutes }     from './routes/auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -51,14 +52,19 @@ export class HttpServer {
     registerSessionRoutes(api, config);
     registerKeystoreRoutes(api, keyStore);
     registerSettingsRoutes(api, config);
+    if (config.privy) {
+      registerAuthRoutes(api, config.privy.appId, config.privy.appSecret);
+    }
     this.app.use('/api', api);
 
     // Config endpoint — exposes non-sensitive config to Dashboard JS
     this.app.get('/api/config', (_req: Request, res: Response) => {
       res.json({
-        chainId:    config.chainId,
-        contracts:  config.contracts,
-        templates:  config.templates,
+        chainId:        config.chainId,
+        contracts:      config.contracts,
+        templates:      config.templates,
+        echoOnboarding: config.echoOnboarding,
+        privyAppId:     config.privy?.appId ?? null,
       });
     });
 

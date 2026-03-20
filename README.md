@@ -307,9 +307,9 @@ After the process starts, **open the dashboard in your browser first**:
 
 - If there are no contexts in the local KeyStore, the dashboard enters onboarding:
   - connect your wallet (EOA),
-  - set a nickname and review policy hints,
-  - register the policy instance on-chain (see **echo-contracts** README), then paste **instance ID** to link the Gateway KeyStore,
-  - generate and bind an execute key locally.
+  - set a nickname and policy limits,
+  - **Guided path (recommended):** `POST /api/onboarding/prepare` → sign EIP-7702 `authorize()` (delegate = `ECHO_DELEGATION_MODULE`) → submit `EchoOnboarding.registerInstanceAndEip7702` from the dashboard → `POST /api/onboarding/finalize` + `POST /api/context` (optional `eip7702Auth`). Requires `ECHO_ONBOARDING` in `.env`.
+  - **Manual path:** register elsewhere, then paste **instance ID** and use `POST /api/register-key` (Dashboard “Manual link”).
 - If there are existing contexts, the dashboard lists them and lets you switch for management.
 
 Once linking is complete, you can connect MCP-compatible agents. Tools use the **currently selected context** (EOA + instance) in the dashboard.
