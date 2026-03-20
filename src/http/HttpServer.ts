@@ -15,8 +15,10 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { KeyStore } from '../keystore/KeyStore.js';
 import type { GatewayConfig } from '../config/index.js';
+import type { McpServer } from '../mcp/McpServer.js';
 import { registerPolicyRoutes }   from './routes/policy.js';
 import { registerSessionRoutes }  from './routes/sessions.js';
 import { registerKeystoreRoutes } from './routes/keystore.js';
@@ -29,6 +31,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export class HttpServer {
   private readonly app: express.Application;
   private readonly config: GatewayConfig;
+  private mcpServer: McpServer | null = null;
+  // One SSE transport per session ID
+  private readonly sseTransports = new Map<string, SSEServerTransport>();
+
+  /** Call after McpServer.start() to enable the /mcp/sse endpoint. */
+  setMcpServer(mcp: McpServer): void { this.mcpServer = mcp; }
 
   constructor(config: GatewayConfig, keyStore: KeyStore) {
     this.config = config;
@@ -66,6 +74,32 @@ export class HttpServer {
         echoOnboarding: config.echoOnboarding,
         privyAppId:     config.privy?.appId ?? null,
       });
+    });
+
+    // ── MCP over SSE ──────────────────────────────────────────────────────
+    // Claude Code / AI agents connect to GET /mcp/sse to receive server messages
+    // and POST to /mcp/messages?sessionId=<id> to send requests.
+    // Configure in Claude Code settings.json:
+    //   { "mcpServers": { "echo-gateway": { "type": "sse", "url": "http://127.0.0.1:<PORT>/mcp/sse" } } }
+    this.app.get('/mcp/sse', async (req: Request, res: Response) => {
+      if (!this.mcpServer) {
+        res.status(503).json({ error: 'MCP server not ready' });
+        return;
+      }
+      const transport = new SSEServerTransport('/mcp/messages', res);
+      this.sseTransports.set(transport.sessionId, transport);
+      res.on('close', () => this.sseTransports.delete(transport.sessionId));
+      await this.mcpServer.getServer().connect(transport);
+    });
+
+    this.app.post('/mcp/messages', async (req: Request, res: Response) => {
+      const sessionId = req.query['sessionId'] as string;
+      const transport = this.sseTransports.get(sessionId);
+      if (!transport) {
+        res.status(400).json({ error: `No active SSE session: ${sessionId}` });
+        return;
+      }
+      await transport.handlePostMessage(req, res);
     });
 
     // MCP setup endpoint — provides local paths so the browser can generate

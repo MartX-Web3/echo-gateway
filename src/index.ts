@@ -105,9 +105,10 @@ async function main(): Promise<void> {
   const httpServer = new HttpServer(config, keyStore);
   await httpServer.start();
 
-  // 5. Start MCP server
+  // 5. Start MCP server (stdio) + expose SSE endpoint on HTTP server
   const server = new McpServer(config, keyStore);
   await server.start();
+  httpServer.setMcpServer(server);
 
   printReady(config.port);
 

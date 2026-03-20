@@ -91,6 +91,9 @@ export class McpServer {
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
+  /** Expose the underlying MCP Server so HttpServer can attach SSE/HTTP transports. */
+  getServer(): Server { return this.server; }
+
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
