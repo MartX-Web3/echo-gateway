@@ -562,8 +562,7 @@
       <div id="ob-panel-4" class="hidden">
         <h2 style="font-size:16px;font-weight:400;margin-bottom:8px">On-chain registration &amp; Gateway link</h2>
         <p style="font-size:12px;color:var(--subtle);margin-bottom:16px;line-height:1.7">
-          Complete these in order: Gateway creates a pending execute key and <code>executeKeyHash</code> → sign an EIP-7702 authorization (delegate to <code>EchoDelegationModule</code> for Pimlico) →
-          call <code>EchoOnboarding.registerInstanceAndEip7702</code> → promote the pending key to your <code>instanceId</code> in the local KeyStore. Requires <code>ECHO_ONBOARDING</code> and template env vars in <code>.env</code>.
+          Complete these in order: Gateway creates a pending execute key → send a <strong>type-4 transaction</strong> that simultaneously activates EIP-7702 delegation (your wallet signs the auth inline) and calls <code>EchoOnboarding.registerInstanceAndEip7702</code> → promote the pending key to your <code>instanceId</code> in the local KeyStore. Requires <code>ECHO_ONBOARDING</code> and template env vars in <code>.env</code>.
         </p>
 
         <div class="card mb-16" style="padding:0;overflow:hidden">
@@ -576,23 +575,15 @@
           <div style="font-size:11px;color:var(--subtle);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Wizard</div>
           <ol style="margin:0;padding-left:1.1rem;color:var(--text)">
             <li style="margin-bottom:8px"><strong>Prepare key</strong> — Gateway stores a pending execute key; you get <code>executeKeyHash</code> for the chain tx.<span id="ob-wiz-s1" class="mono" style="color:var(--subtle);font-size:11px"></span></li>
-            <li style="margin-bottom:8px"><strong>EIP-7702 auth</strong> — Sign an <em>authorization</em> (delegate = <code>EchoDelegationModule</code>) so the bundler can attach <code>eip7702Auth</code>. <strong>Trust Wallet</strong> often cannot — use <strong>Skip</strong>, or <strong>paste JSON</strong> below, or the same EOA in MetaMask / Rabby for this step only.<span id="ob-wiz-s2" style="color:var(--subtle);font-size:11px"></span></li>
-            <li style="margin-bottom:8px"><strong>On-chain</strong> — Submit <code>registerInstanceAndEip7702</code> to EchoOnboarding using a <strong>minimal function fragment</strong> (only that call’s encoding — not a full contract ABI). We parse <code>instanceId</code> from the <code>PolicyRegistry</code> log.<span id="ob-wiz-s3" style="color:var(--subtle);font-size:11px"></span></li>
-            <li><strong>Finish</strong> — Promote the pending key to that <code>instanceId</code> and save context (including <code>eip7702Auth</code> if signed).<span id="ob-wiz-s4" style="color:var(--subtle);font-size:11px"></span></li>
+            <li style="margin-bottom:8px"><strong>EIP-7702 activation</strong> — Included automatically in Step 3. The on-chain tx is sent as a <strong>type-4 transaction</strong> with an <code>authorizationList</code>; your wallet (MetaMask / OKX / Rabby) signs both the tx and the authorization in one step. Delegation to <code>EchoDelegationModule</code> is set permanently after that tx — no separate signing needed.<span id="ob-wiz-s2" style="color:var(--subtle);font-size:11px"></span></li>
+            <li style="margin-bottom:8px"><strong>On-chain</strong> — Submit <code>registerInstanceAndEip7702</code> as a type-4 tx. Wallet shows an EIP-7702 confirmation prompt. We parse <code>instanceId</code> from the <code>PolicyRegistry</code> log.<span id="ob-wiz-s3" style="color:var(--subtle);font-size:11px"></span></li>
+            <li><strong>Finish</strong> — Promote the pending key to that <code>instanceId</code> and save context.<span id="ob-wiz-s4" style="color:var(--subtle);font-size:11px"></span></li>
           </ol>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
             <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-prepare" onclick="obWizardPrepare()">1 · Prepare key</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-sign7702" onclick="obWizardSign7702()" disabled>2 · Sign EIP-7702</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-skip7702" onclick="obWizardSkip7702()" disabled title="Continue without eip7702Auth; add it later via /api/context">2b · Skip (no wallet support)</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-onchain" onclick="obWizardOnchain()" disabled>3 · On-chain register</button>
-            <button type="button" class="btn btn-primary btn-sm" id="ob-btn-finish" onclick="obWizardFinish()" disabled>4 · Finish &amp; open Dashboard</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-onchain" onclick="obWizardOnchain()" disabled>2 · On-chain register + EIP-7702</button>
+            <button type="button" class="btn btn-primary btn-sm" id="ob-btn-finish" onclick="obWizardFinish()" disabled>3 · Finish &amp; open Dashboard</button>
           </div>
-          <details style="margin-top:12px;font-size:11px;color:var(--subtle);line-height:1.55">
-            <summary style="cursor:pointer;color:var(--text);font-weight:500">No wallet_sign7702Authorization (e.g. Trust): paste eip7702Auth JSON</summary>
-            <p style="margin:10px 0 8px">Must match your wallet address, chain ID, and delegate. Example shape: <code class="mono">{"address":"0x…","chainId":"0xaa36a7","nonce":"0x0","r":"0x…","s":"0x…","yParity":"0x0"}</code> (or wrap with <code>{"authorization":{…}}</code>).</p>
-            <textarea id="ob-paste-7702" rows="5" placeholder='{"address":"…","chainId":"0x…","nonce":"0x…","r":"0x…","s":"0x…","yParity":"0x0"}' style="width:100%;font-size:11px;font-family:IBM Plex Mono,monospace;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);box-sizing:border-box"></textarea>
-            <button type="button" class="btn btn-ghost btn-sm mt-8" onclick="obWizardApplyPasted7702()">Apply pasted authorization</button>
-          </details>
         </div>
 
         <details class="card mb-16" style="padding:12px 14px;font-size:12px;line-height:1.65" id="ob-instance-help-wrap">
@@ -1804,8 +1795,6 @@ function obResetOnboardingWizard(){
   obEip7702Auth=null;
   obChainInstanceId=null;
   ['ob-wiz-s1','ob-wiz-s2','ob-wiz-s3','ob-wiz-s4'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='';});
-  const b2=document.getElementById('ob-btn-sign7702');if(b2)b2.disabled=true;
-  const bs=document.getElementById('ob-btn-skip7702');if(bs)bs.disabled=true;
   const b3=document.getElementById('ob-btn-onchain');if(b3)b3.disabled=true;
   const b4=document.getElementById('ob-btn-finish');if(b4)b4.disabled=true;
 }
@@ -1996,9 +1985,8 @@ async function obWizardPrepare(){
     obPendingId=r.pendingId;
     obExecuteKeyHash=r.executeKeyHash;
     document.getElementById('ob-wiz-s1').textContent=' ✓';
-    document.getElementById('ob-btn-sign7702').disabled=false;
-    const sk=document.getElementById('ob-btn-skip7702');if(sk)sk.disabled=false;
-    showOb('Execute key ready — run Step 3 on-chain before Finish. If you "Prepare" again, you must sign a new Step 3 tx (new instanceId).','info');
+    document.getElementById('ob-btn-onchain').disabled=false;
+    showOb('Execute key ready — click "2 · On-chain register + EIP-7702" to send the type-4 activation tx.','info');
   }catch(err){showOb(err.message??String(err),'error')}
 }
 
@@ -2086,7 +2074,7 @@ async function obWizardSign7702(){
   }catch(err){showOb(err.message??String(err),'error')}
 }
 
-function obWizardOnchain(){
+async function obWizardOnchain(){
   hideOb();
   if(!gatewayConfig?.echoOnboarding){showOb('ECHO_ONBOARDING is not set — add it to .env or use manual link below.','error');return}
   if(!obExecuteKeyHash){showOb('Complete step 1 first.','error');return}
@@ -2094,10 +2082,36 @@ function obWizardOnchain(){
   try{tuple=obBuildOnboardingTuple(obExecuteKeyHash)}catch(e){showOb(e.message??String(e),'error');return}
   const iface=new ethers.Interface(ONBOARDING_REGISTER_ABI);
   const calldata=iface.encodeFunctionData('registerInstanceAndEip7702',[tuple]);
+
+  // Build EIP-7702 authorizationList to activate delegation in the same type-4 tx.
+  // The wallet (MetaMask v12.7+ / OKX) signs the authorization as part of eth_sendTransaction.
+  // Delegation is persistent after this tx — future UserOps need no eip7702Auth.
+  let authorizationList;
+  try{
+    if(!window._echoProvider)throw new Error('no provider');
+    const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
+    const from=accounts[0];
+    window._obWizardOwner=from;
+    const ncHex=await window._echoProvider.request({method:'eth_getTransactionCount',params:[from,'pending']});
+    const nonce=Number(BigInt(ncHex));
+    const chainId=Number(gatewayConfig.chainId);
+    const delegate=gatewayConfig.contracts.echoDelegationModule;
+    authorizationList=[{
+      chainId:'0x'+chainId.toString(16),
+      address:delegate,
+      nonce:'0x'+nonce.toString(16),
+    }];
+    document.getElementById('ob-wiz-s2').textContent=' ✓ (included in tx)';
+  }catch(e){
+    showOb('Could not build authorizationList: '+(e.message||String(e))+' — sending as regular tx (EIP-7702 delegation NOT activated).','info');
+    authorizationList=undefined;
+  }
+
   openPendingTx({
     to:gatewayConfig.echoOnboarding,
     calldata,
-    desc:'EchoOnboarding.registerInstanceAndEip7702 — register policy + EIP-7702 binding',
+    authorizationList,
+    desc:'EchoOnboarding.registerInstanceAndEip7702'+(authorizationList?' + EIP-7702 activation (type-4 tx)':' (regular tx — no delegation)'),
     onSuccess(receipt){
       const iid=receipt?parseInstanceIdFromReceipt(receipt):null;
       if(!iid){showOb('InstanceRegistered not found in receipt — check network and PolicyRegistry address.','error');return}
@@ -2127,26 +2141,11 @@ async function obWizardFinish(){
         label:selectedTemplate??'custom',
       })}).then(r=>r.json());
     if(fin.error)throw new Error(fin.error);
-    // The on-chain tx in Step 3 incremented the EOA nonce.
-    // Re-sign the auth NOW so the stored nonce matches the current eth_getTransactionCount.
-    // (An auth signed in Step 2 with nonce N is invalidated when the EOA's nonce becomes N+1.)
-    if(window._echoProvider&&!window._echoWalletIsPrivy){
-      try{
-        const delegate=gatewayConfig.contracts.echoDelegationModule;
-        const chainId=Number(gatewayConfig.chainId);
-        const freshAuth=await sign7702ViaWallet(window._echoProvider,{delegate,chainId,from:owner});
-        obEip7702Auth=freshAuth;
-        document.getElementById('ob-wiz-s4').textContent=' ✓ (auth refreshed)';
-      }catch(e){
-        showOb(
-          'Warning: EIP-7702 auth re-sign failed after on-chain tx — '+(e.message||String(e))+
-          '. The stored auth may have a stale nonce. Use Settings → Re-sign EIP-7702 auth to fix later.',
-          'info'
-        );
-      }
-    }
+    // EIP-7702 delegation was activated inside the type-4 on-chain tx (Step 3).
+    // No eip7702Auth needs to be stored — the delegation is permanent on-chain.
+    // Future UserOps are submitted without eip7702Auth; the bundler sends them as type-2 txs.
     await fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({instanceId:obChainInstanceId,...(obEip7702Auth?{eip7702Auth:obEip7702Auth}:{})})});
+      body:JSON.stringify({instanceId:obChainInstanceId})});
     document.getElementById('ob-wiz-s4').textContent=' ✓';
     showOb('✓ Done — loading Dashboard…','info');
     window._echoProvider=null;
@@ -2409,16 +2408,18 @@ async function sendPolicyTx({functionName,args,desc,resultEl,onSuccess}){
   const iface=new ethers.Interface(POLICY_ABI);
   openPendingTx({to:gatewayConfig.contracts.policyRegistry,calldata:iface.encodeFunctionData(functionName,args),desc,onSuccess,resultEl});
 }
-function openPendingTx({to,calldata,desc,onSuccess,resultEl}){
-  pendingTxQueue={to,calldata,onSuccess,resultEl};
+function openPendingTx({to,calldata,desc,onSuccess,resultEl,authorizationList}){
+  pendingTxQueue={to,calldata,onSuccess,resultEl,authorizationList};
   document.getElementById('ptx-desc').textContent=desc??'Sign this transaction to continue.';
-  document.getElementById('ptx-details').textContent='To: '+to;
+  const detailParts=['To: '+to];
+  if(authorizationList?.length)detailParts.push('Type: 4 (EIP-7702 activation included)');
+  document.getElementById('ptx-details').textContent=detailParts.join(' · ');
   document.getElementById('ptx-result').classList.add('hidden');
   openModal('modal-pending-tx');
 }
 async function signPendingTx(){
   if(!pendingTxQueue)return;
-  const{to,calldata,onSuccess,resultEl}=pendingTxQueue;
+  const{to,calldata,onSuccess,resultEl,authorizationList}=pendingTxQueue;
   const provider=window._echoProvider;
   if(!provider){showResult('ptx-result','Connect your wallet to sign.','warn');showWalletPicker();return}
   try{
@@ -2426,28 +2427,21 @@ async function signPendingTx(){
     const from=accounts[0];
     showResult('ptx-result','Waiting for wallet confirmation…','info');
     document.getElementById('ptx-sign-btn').disabled=true;
-    // Some wallet providers may use a too-high default gasLimit (e.g. 21,000,000),
-    // which can exceed the network/provider cap (cap appears as 16777216).
-    // To make this robust, always pass an explicit gas <= cap.
-    const CAP=16777216n; // from error: cap: 16777216
+    const CAP=16777216n;
     const txReq={from,to,data:calldata};
+    if(authorizationList?.length)txReq.authorizationList=authorizationList;
 
     let estBig=null;
     try{
+      // eth_estimateGas may not support type-4 txs on all RPCs; failure is non-fatal
       const est=await provider.request({method:'eth_estimateGas',params:[txReq]});
-      // est is hex string or number-ish; normalize to bigint
       estBig=typeof est==='string'?BigInt(est):BigInt(String(est));
-    }catch(_e){
-      estBig=null;
-    }
+    }catch(_e){estBig=null;}
 
-    // Add 20% buffer if we got an estimate; otherwise use CAP-1 as a safe upper bound.
-    let gasBig=estBig!==null ? (estBig + (estBig/5n)) : (CAP-1n);
-    if(gasBig<=0n) gasBig=CAP-1n;
-    if(gasBig>CAP) gasBig=CAP-1n;
-
+    let gasBig=estBig!==null?(estBig+(estBig/5n)):(CAP-1n);
+    if(gasBig<=0n)gasBig=CAP-1n;
+    if(gasBig>CAP)gasBig=CAP-1n;
     const gasHex='0x'+gasBig.toString(16);
-    // Use both keys for wallet compatibility.
     txReq.gas=gasHex;
     txReq.gasLimit=gasHex;
 
