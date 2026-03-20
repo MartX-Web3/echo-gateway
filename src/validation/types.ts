@@ -65,7 +65,7 @@ export interface IntentValidationInput {
 /** Input for pre-validation stage 2 (transaction layer, after Tool returns calldata). */
 export interface CalldataValidationInput {
   instanceId: Hex;
-  /** The smart account address — recipient must equal this */
+  /** User EOA (UserOp.sender) — swap recipient must equal this */
   accountAddress: Address;
   /** Calldata returned by UniswapV3Tool.quoteAndBuild() */
   swapCalldata: SwapCalldata;

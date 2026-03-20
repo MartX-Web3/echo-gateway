@@ -54,10 +54,20 @@ function mockRpcError(code: number, message: string) {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const ACCOUNT    = '0x1234567890123456789012345678901234567890' as const;
+/** User EOA — UserOp.sender in EIP-7702 flow */
+const SENDER_EOA = '0x1234567890123456789012345678901234567890' as const;
 const TARGET     = '0x2e49DaB78491F0C82636401a59602661cdA51Bb5' as const;
 const INNER_CD   = '0x414bf389' + 'ab'.repeat(228) as `0x${string}`; // fake exactInputSingle calldata
-const SIGNATURE  = ('0x01' + 'ab'.repeat(32)) as `0x${string}`;
+const SIGNATURE  = ('0x03' + 'ab'.repeat(32)) as `0x${string}`;
+
+const DUMMY_EIP7702_AUTH = {
+  address:   '0x1111111111111111111111111111111111111111' as const,
+  chainId:   '0xaa36a7' as const,
+  nonce:     '0x0' as const,
+  r:         ('0x' + '22'.repeat(32)) as `0x${string}`,
+  s:         ('0x' + '33'.repeat(32)) as `0x${string}`,
+  yParity:   '0x1' as const,
+};
 
 const SPONSOR_RESPONSE = {
   paymaster:                      '0x' + '11'.repeat(20),
@@ -95,7 +105,7 @@ describe('UserOpBuilder', () => {
   // ── Outer calldata construction ────────────────────────────────────────
 
   describe('_buildOuterCalldata (via submit)', () => {
-    it('wraps innerCalldata in AccountERC7579.execute()', async () => {
+    it('wraps innerCalldata in delegation module execute() layout', async () => {
       const readContract = setupPublicClientMock();
       readContract.mockResolvedValueOnce(0n); // nonce = 0
 
@@ -105,7 +115,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } }); // receipt
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       // Inspect the callData sent to Pimlico
       const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
@@ -139,7 +149,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       const callData = sponsorCall.params[0].callData as string;
@@ -160,7 +170,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       const callData = sponsorCall.params[0].callData as string;
@@ -181,7 +191,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       const callData = sponsorCall.params[0].callData as string;
@@ -206,7 +216,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       const nonce = sponsorCall.params[0].nonce as string;
@@ -227,7 +237,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       expect(sponsorCall.method).toBe('pm_sponsorUserOperation');
@@ -244,7 +254,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       const sendCall = JSON.parse(mockFetch.mock.calls[2]![1]!.body as string);
       expect(sendCall.method).toBe('eth_sendUserOperation');
@@ -268,7 +278,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       const sendCall = JSON.parse(mockFetch.mock.calls[2]![1]!.body as string);
 
@@ -299,7 +309,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       const sendCall = JSON.parse(mockFetch.mock.calls[2]![1]!.body as string);
       expect(sendCall.params[0].signature).toBe(SIGNATURE);
@@ -315,13 +325,54 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       // Sponsor call (first fetch) should use dummy sig, NOT the real signature
       const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
       expect(sponsorCall.params[0].signature).not.toBe(SIGNATURE);
       // Dummy is 65 zero bytes
       expect(sponsorCall.params[0].signature).toBe('0x' + '00'.repeat(65));
+    });
+  });
+
+  // ── EIP-7702 bundler field ───────────────────────────────────────────────
+
+  describe('eip7702Auth', () => {
+    it('includes eip7702Auth in sponsor and send bodies when provided', async () => {
+      const readContract = setupPublicClientMock();
+      readContract.mockResolvedValueOnce(0n);
+
+      mockRpc(GAS_PRICE_RESPONSE);
+      mockRpc(SPONSOR_RESPONSE);
+      mockRpc(USER_OP_HASH);
+      mockRpc({ receipt: { transactionHash: TX_HASH } });
+
+      const builder = makeBuilder();
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE, {
+        eip7702Auth: DUMMY_EIP7702_AUTH,
+      });
+
+      const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
+      const sendCall    = JSON.parse(mockFetch.mock.calls[2]![1]!.body as string);
+
+      expect(sponsorCall.params[0].eip7702Auth).toEqual(DUMMY_EIP7702_AUTH);
+      expect(sendCall.params[0].eip7702Auth).toEqual(DUMMY_EIP7702_AUTH);
+    });
+
+    it('omits eip7702Auth when not provided', async () => {
+      const readContract = setupPublicClientMock();
+      readContract.mockResolvedValueOnce(0n);
+
+      mockRpc(GAS_PRICE_RESPONSE);
+      mockRpc(SPONSOR_RESPONSE);
+      mockRpc(USER_OP_HASH);
+      mockRpc({ receipt: { transactionHash: TX_HASH } });
+
+      const builder = makeBuilder();
+      await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
+
+      const sponsorCall = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string);
+      expect(sponsorCall.params[0].eip7702Auth).toBeUndefined();
     });
   });
 
@@ -338,7 +389,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } });
 
       const builder = makeBuilder();
-      const result = await builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      const result = await builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       expect(result.userOpHash).toBe(USER_OP_HASH);
       expect(result.txHash).toBe(TX_HASH);
@@ -362,7 +413,7 @@ describe('UserOpBuilder', () => {
       mockRpc({ receipt: { transactionHash: TX_HASH } }); // second poll: included
 
       const builder = makeBuilder();
-      const promise = builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      const promise = builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
 
       // Advance timers past both poll delays
       await vi.advanceTimersByTimeAsync(2_000);  // first poll
@@ -392,7 +443,7 @@ describe('UserOpBuilder', () => {
       const builder = makeBuilder();
 
       // Attach rejection handler immediately to prevent unhandled rejection
-      const promise = builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE);
+      const promise = builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE);
       promise.catch(() => {}); // suppress unhandled rejection warning
 
       // Advance through all polling delays
@@ -416,7 +467,7 @@ describe('UserOpBuilder', () => {
 
       const builder = makeBuilder();
       await expect(
-        builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE)
+        builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE)
       ).rejects.toThrow('AA23 reverted');
     });
 
@@ -432,7 +483,7 @@ describe('UserOpBuilder', () => {
 
       const builder = makeBuilder();
       await expect(
-        builder.submit(ACCOUNT, TARGET, INNER_CD, SIGNATURE)
+        builder.submit(SENDER_EOA, TARGET, INNER_CD, SIGNATURE)
       ).rejects.toThrow('HTTP 503');
     });
   });

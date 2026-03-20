@@ -7,7 +7,7 @@
  *   - slippage is applied correctly (amountWithSlippage)
  *   - buildCalldata() produces correct ABI-encoded calldata
  *   - selector matches IntentRegistry constants
- *   - recipient is ALWAYS the provided AccountERC7579 (S2)
+ *   - recipient is ALWAYS the provided user EOA (S2)
  *   - fee tier auto-detection falls through to next tier on failure
  *   - zero-quote throws (no liquidity)
  */
@@ -20,10 +20,10 @@ import type { SwapIntent } from './types.js';
 
 // ── Addresses ──────────────────────────────────────────────────────────────
 
-const SWAP_ROUTER   = '0xC272Ce98e3a103297EB3A57E4f86902c0fdd2081' as const;
-const QUOTER_V2     = '0x2e49DaB78491F0C82636401a59602661cdA51Bb5' as const;
-const USDC          = '0x10A41D59249F0b143fe73d8583f112AF66375ea0' as const;
-const WETH          = '0x78f1422Df8c4631fd3ACe3c2E1b02df6d815e541' as const;
+const SWAP_ROUTER   = '0x68a27E6b5E671375bA5b2De857DaeB4E757a9e17' as const;
+const QUOTER_V2     = '0x4683a16b9D165ff8EaA90b1cD711c62caBA9c70e' as const;
+const USDC          = '0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43' as const;
+const WETH          = '0xD9100773B0B2717B927265Ce92afeA7c3dCA620E' as const;
 const ACCOUNT       = '0x1234567890123456789012345678901234567890' as const;
 
 // ── Mock setup ─────────────────────────────────────────────────────────────
@@ -278,7 +278,7 @@ describe('UniswapV3Tool', () => {
       expect(decoded.functionName).toBe('exactOutputSingle');
     });
 
-    it('S2: recipient in calldata is always the provided AccountERC7579', () => {
+    it('S2: recipient in calldata is always the provided user EOA', () => {
       const tool = makeTool();
       const result = tool.buildCalldata(
         baseQuote,
@@ -300,7 +300,7 @@ describe('UniswapV3Tool', () => {
       const tool = makeTool();
       const ATTACKER = '0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead' as const;
 
-      // Tool always uses the provided recipient — caller must pass AccountERC7579
+      // Tool always uses the provided recipient — caller must pass user EOA
       const result = tool.buildCalldata(baseQuote, {
         tokenIn: USDC, tokenOut: WETH, amount: 100n * 10n ** 6n, direction: 'exactInput', feeTier: 3000,
       }, ACCOUNT);

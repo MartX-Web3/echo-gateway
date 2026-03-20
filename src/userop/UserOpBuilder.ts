@@ -2,11 +2,10 @@
  * UserOpBuilder — assembles and submits ERC-4337 PackedUserOperations.
  *
  * Gas payment: Pimlico Verifying Paymaster (pm_sponsorUserOperation).
- * Users do NOT need ETH in their AccountERC7579. Echo team's Pimlico
- * API credit covers gas.
+ * Users do not need ETH on the EOA for gas when paymaster sponsors.
  *
  * Pipeline:
- *   1. Wrap inner swap calldata → AccountERC7579.execute() outer call
+ *   1. Wrap inner swap calldata → EchoDelegationModule.execute() outer call (ERC-7579 layout)
  *   2. Fetch nonce from EntryPoint
  *   3. Call pm_sponsorUserOperation → paymasterAndData + gas estimates
  *   4. Attach signature (execute key or session key from KeyStore)
@@ -25,16 +24,16 @@
 
 import {
   createPublicClient,
-  createClient,
   http,
   encodeFunctionData,
   encodePacked,
+  numberToHex,
   pad,
   toHex,
   hexToBigInt,
 } from 'viem';
 import { sepolia } from 'viem/chains';
-import type { Address, Hex, PublicClient } from 'viem';
+import type { Address, Hex, PublicClient, SignedAuthorization } from 'viem';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -92,6 +91,46 @@ export interface SubmitResult {
   txHash:     Hex;
 }
 
+/**
+ * EIP-7702 authorization object for Pimlico `eth_sendUserOperation` / `pm_sponsorUserOperation`
+ * (field name `eip7702Auth`). See Pimlico bundler reference.
+ */
+export type BundlerEip7702Auth = {
+  address:   Address;
+  chainId:   Hex;
+  nonce:     Hex;
+  r:         Hex;
+  s:         Hex;
+  yParity:   Hex;
+  /** Some bundlers accept an additional `v`; optional when using yParity. */
+  v?:        Hex | string;
+};
+
+export interface SubmitOptions {
+  /** When sender is an EIP-7702 EOA, bundler requires the signed authorization (delegate = EchoDelegationModule). */
+  eip7702Auth?: BundlerEip7702Auth;
+}
+
+/** Serialize viem `signAuthorization` output for Pimlico JSON-RPC. */
+export function signedAuthorizationToBundlerEip7702Auth(
+  auth: SignedAuthorization,
+): BundlerEip7702Auth {
+  return {
+    address: auth.address,
+    chainId: numberToHex(auth.chainId),
+    nonce:   numberToHex(auth.nonce),
+    r: auth.r
+      ? numberToHex(BigInt(auth.r), { size: 32 })
+      : pad('0x', { size: 32 }),
+    s: auth.s
+      ? numberToHex(BigInt(auth.s), { size: 32 })
+      : pad('0x', { size: 32 }),
+    yParity: auth.yParity !== undefined && auth.yParity !== null
+      ? numberToHex(auth.yParity, { size: 1 })
+      : pad('0x', { size: 32 }),
+  };
+}
+
 /** Minimal PackedUserOperation struct (EntryPoint v0.7) */
 interface PackedUserOp {
   sender:               Address;
@@ -106,6 +145,7 @@ interface PackedUserOp {
   paymasterVerificationGasLimit: Hex;
   paymasterPostOpGasLimit:       Hex;
   signature:            Hex;
+  eip7702Auth?:         BundlerEip7702Auth;
 }
 
 // ── UserOpBuilder ──────────────────────────────────────────────────────────
@@ -127,23 +167,25 @@ export class UserOpBuilder {
   /**
    * Build, sponsor, sign and submit a UserOperation.
    *
-   * @param account      EchoAccount clone address (sender)
+   * @param senderEoa    User EOA — must match UserOperation.sender (EIP-7702 delegated to EchoDelegationModule)
    * @param target       Uniswap V3 SwapRouter address
    * @param innerCalldata  ABI-encoded exactInputSingle / exactOutputSingle
-   * @param signature    Pre-built Echo signature ([0x01][key] or [0x02][sid][key])
+   * @param signature    Pre-built Echo signature ([0x03][executeKey] realtime, or [0x02][sessionId][sessionKey])
+   * @param options      Optional `eip7702Auth` for Pimlico when submitting from a 7702 EOA
    */
   async submit(
-    account:       Address,
+    senderEoa:     Address,
     target:        Address,
     innerCalldata: Hex,
     signature:     Hex,
+    options?:      SubmitOptions,
   ): Promise<SubmitResult> {
 
-    // Step 1: Wrap innerCalldata into AccountERC7579.execute() calldata
+    // Step 1: Wrap innerCalldata into EchoDelegationModule.execute() calldata (ERC-7579 layout)
     const outerCalldata = this._buildOuterCalldata(target, innerCalldata);
 
-    // Step 2: Fetch nonce from EntryPoint
-    const nonce = await this._getNonce(account);
+    // Step 2: Fetch nonce from EntryPoint (sender = EOA)
+    const nonce = await this._getNonce(senderEoa);
 
     // Step 3: Fetch recommended fees for this user operation
     const gasPrice = await this._rpc<{
@@ -161,7 +203,7 @@ export class UserOpBuilder {
 
     // Step 5: Build a partial UserOp (no gas fields yet, placeholder signature)
     const partialOp: PackedUserOp = {
-      sender:             account,
+      sender:             senderEoa,
       nonce:              toHex(nonce),
       initCode:           '0x',
       callData:           outerCalldata,
@@ -173,6 +215,7 @@ export class UserOpBuilder {
       paymasterVerificationGasLimit: '0x0',
       paymasterPostOpGasLimit:       '0x0',
       signature:          ('0x' + '00'.repeat(65)) as Hex,   // dummy for gas estimation
+      ...(options?.eip7702Auth ? { eip7702Auth: options.eip7702Auth } : {}),
     };
 
     // Step 6: Call pm_sponsorUserOperation → get paymaster + gas
@@ -193,7 +236,7 @@ export class UserOpBuilder {
   // ── Private: calldata ──────────────────────────────────────────────────
 
   /**
-   * Wrap innerCalldata into AccountERC7579.execute() call.
+   * Wrap innerCalldata into delegation module `execute()` call.
    *
    * executionCalldata = abi.encodePacked(target, uint256(0), innerCalldata)
    *
@@ -356,10 +399,14 @@ export class UserOpBuilder {
       result.paymasterPostOpGasLimit = op.paymasterPostOpGasLimit;
     }
 
-    // Only include factory if initCode is non-empty
+    // Only include factory if initCode is non-empty (7702 MVP: always empty)
     if (op.initCode && op.initCode !== '0x') {
       result.factory     = ('0x' + op.initCode.slice(2, 42)) as Hex;
       result.factoryData = ('0x' + op.initCode.slice(42)) as Hex;
+    }
+
+    if (op.eip7702Auth) {
+      result.eip7702Auth = op.eip7702Auth;
     }
 
     return result;

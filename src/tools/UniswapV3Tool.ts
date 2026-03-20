@@ -5,10 +5,10 @@
  *   1. Get a quote from QuoterV2 (simulate the swap, no state change)
  *   2. Apply slippage tolerance to get amountOutMinimum / amountInMaximum
  *   3. Build ABI-encoded calldata for exactInputSingle or exactOutputSingle
- *   4. Hardcode recipient = AccountERC7579 (S2 enforcement at Gateway layer)
+ *   4. Hardcode recipient = user EOA (S2 enforcement at Gateway layer)
  *
  * S2 guarantee:
- *   recipient is always set to the user's AccountERC7579 address.
+ *   recipient is always set to the user's EOA (swap proceeds land on UserOp.sender).
  *   It is NEVER set to the agent's address or any third-party address.
  *   EchoPolicyValidator independently re-verifies this on-chain.
  *
@@ -19,7 +19,7 @@
  *
  * No approvals:
  *   UniswapV3Tool does NOT handle ERC-20 approvals. The user must approve
- *   the SwapRouter to spend tokenIn from their AccountERC7579 separately
+ *   the SwapRouter to spend tokenIn from their EOA separately
  *   (via the Dashboard "Enable token" flow). This is consistent with the
  *   design decision: Factory does NOT set approvals.
  */
@@ -98,7 +98,7 @@ export class UniswapV3Tool {
    *
    * @param quote      Quote returned by quote()
    * @param intent     Original swap intent (for deadline, direction)
-   * @param recipient  MUST be the user's AccountERC7579 address (S2)
+   * @param recipient  MUST be the user's EOA (UserOp.sender / S2)
    *
    * @returns SwapCalldata ready to be wrapped in a UserOperation
    */
@@ -164,7 +164,7 @@ export class UniswapV3Tool {
    * This is the primary entry point used by PreValidator and McpServer.
    *
    * @param intent     Swap intent from the agent
-   * @param recipient  User's AccountERC7579 address (hardcoded S2)
+   * @param recipient  User's EOA (hardcoded S2)
    */
   async quoteAndBuild(
     intent: SwapIntent,

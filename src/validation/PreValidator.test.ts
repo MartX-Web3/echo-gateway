@@ -37,12 +37,12 @@ function setupMock(): ReturnType<typeof vi.fn> {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const REGISTRY   = '0x5A9C627774f4f02977CE9Fd7e4FEDe5AC281e938' as const;
+const REGISTRY   = '0x97d34e2af18c20971BE7F1D85Abe73624A13762b' as const;
 const INSTANCE   = ('0x' + 'ab'.repeat(32)) as `0x${string}`;
 const SESSION    = ('0x' + 'cd'.repeat(32)) as `0x${string}`;
-const USDC       = '0x10A41D59249F0b143fe73d8583f112AF66375ea0' as const;
-const WETH       = '0x78f1422Df8c4631fd3ACe3c2E1b02df6d815e541' as const;
-const ROUTER     = '0x2e49DaB78491F0C82636401a59602661cdA51Bb5' as const;
+const USDC       = '0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43' as const;
+const WETH       = '0xD9100773B0B2717B927265Ce92afeA7c3dCA620E' as const;
+const ROUTER     = '0x68a27E6b5E671375bA5b2De857DaeB4E757a9e17' as const;
 const ACCOUNT    = '0x1234567890123456789012345678901234567890' as const;
 const ATTACKER   = '0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead' as const;
 

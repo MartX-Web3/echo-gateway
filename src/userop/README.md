@@ -10,7 +10,7 @@ McpServer
         │
         ▼
   UserOpBuilder
-    1. Wrap calldata → AccountERC7579.execute() outer call
+    1. Wrap calldata → EchoDelegationModule.execute() outer call (ERC-7579 layout)
     2. Estimate gas (eth_estimateUserOperationGas via Pimlico)
     3. Get fee data (eth_maxFeePerGas, eth_maxPriorityFeePerGas)
     4. Assemble PackedUserOperation
@@ -25,15 +25,16 @@ McpServer
 
 ```
 struct PackedUserOperation {
-  address sender;              // AccountERC7579 clone address
-  uint256 nonce;               // from EntryPoint.getNonce(account, 0)
-  bytes   initCode;            // empty (account already deployed)
-  bytes   callData;            // AccountERC7579.execute(mode, executionCalldata)
+  address sender;              // user EOA (EIP-7702)
+  uint256 nonce;               // from EntryPoint.getNonce(senderEoa, 0)
+  bytes   initCode;            // empty (no factory / no new account contract)
+  bytes   callData;            // EchoDelegationModule.execute(mode, executionCalldata)
   bytes32 accountGasLimits;    // abi.encodePacked(verificationGasLimit uint128, callGasLimit uint128)
   uint256 preVerificationGas;
   bytes32 gasFees;             // abi.encodePacked(maxPriorityFeePerGas uint128, maxFeePerGas uint128)
   bytes   paymasterAndData;    // empty (user pays gas in ETH for MVP)
-  bytes   signature;           // [0x01][executeKey] or [0x02][sessionId][sessionKey]
+  bytes   signature;           // [0x03][executeKey] or [0x02][sessionId][sessionKey]
+  // JSON-RPC: optional eip7702Auth (SignedAuthorization) for Pimlico
 }
 ```
 
@@ -41,10 +42,10 @@ struct PackedUserOperation {
 
 ## callData construction
 
-`userOp.callData` is NOT the raw swap calldata — it is a call to `AccountERC7579.execute()` which wraps the swap calldata:
+`userOp.callData` is NOT the raw swap calldata — it is a call to the delegation module `execute()` which wraps the swap calldata:
 
 ```
-AccountERC7579.execute(bytes32 mode, bytes calldata executionCalldata)
+EchoDelegationModule.execute(bytes32 mode, bytes calldata executionCalldata)
 
 mode = CALLTYPE_SINGLE = bytes32(0)
 
@@ -74,7 +75,7 @@ This produces the outer calldata layout that `EchoPolicyValidator._extractTarget
 - `verificationGasLimit` and `callGasLimit`: estimated via `eth_estimateUserOperationGas` (Pimlico)
 - `preVerificationGas`: returned by the same estimate call
 - `maxFeePerGas` and `maxPriorityFeePerGas`: from `pimlico_getUserOperationGasPrice`
-- Paymaster: **Pimlico Verifying Paymaster** — sponsor gas fees, so the user does not need ETH in `AccountERC7579` for gas
+- Paymaster: **Pimlico Verifying Paymaster** — sponsor gas fees, so the user does not need ETH on the EOA for gas when sponsored
 - Gas limits are padded by 20% to reduce revert risk from estimation error
 
 ---
@@ -117,7 +118,7 @@ Key is always `0` for MVP (single-key nonce space). The nonce is a 2D value: `ke
 
 | Error | Cause | Recovery |
 |---|---|---|
-| `AA21 didn't pay prefund` | Account has no ETH for gas | User must deposit ETH into AccountERC7579 |
+| `AA21 didn't pay prefund` | Prefund / paymaster issue | Check paymaster sponsorship or EOA prefund per bundler |
 | `AA23 reverted` | EchoPolicyValidator rejected the UserOp | Check PreValidator output — policy limit hit |
 | `AA25 invalid account nonce` | Nonce collision (concurrent UserOps) | Retry with fresh nonce |
 | `replacement underpriced` | Gas price too low | Retry with higher gas price |
