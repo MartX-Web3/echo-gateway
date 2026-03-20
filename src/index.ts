@@ -6,10 +6,12 @@
  *   1. Load config from environment variables
  *   2. Prompt for KeyStore passphrase (stdin, never logged)
  *   3. Unlock KeyStore — decrypts signing keys into memory
- *   4. Start McpServer on stdio
+ *   4. Start HTTP server (Dashboard + MCP over SSE)
  *
- * The gateway runs as a local process. OpenClaw connects to it via
- * stdio MCP transport. The process stays alive until SIGINT/SIGTERM.
+ * The gateway runs as a local HTTP server. AI agents connect via SSE:
+ *   GET  http://127.0.0.1:<PORT>/mcp/sse
+ * Configure in Claude Code settings.json:
+ *   { "mcpServers": { "echo": { "type": "sse", "url": "http://127.0.0.1:<PORT>/mcp/sse" } } }
  *
  * Usage:
  *   node dist/index.js
@@ -63,7 +65,7 @@ function printReady(port: number): void {
   const line = `${C.dim}${'─'.repeat(52)}${C.reset}`;
   console.error(`  ${line}`);
   console.error(`  ${C.gray}Dashboard${C.reset}   ${C.green}http://127.0.0.1:${port}${C.reset}`);
-  console.error(`  ${C.gray}MCP server${C.reset}  ${C.green}ready${C.reset}  ${C.dim}(stdio)${C.reset}`);
+  console.error(`  ${C.gray}MCP (SSE)${C.reset}   ${C.green}http://127.0.0.1:${port}/mcp/sse${C.reset}`);
   console.error(`  ${line}`);
   console.error(`  ${C.dim}Press Ctrl+C to stop${C.reset}`);
   console.error('');
@@ -101,16 +103,27 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // 4. Start HTTP server (Dashboard)
+  // 4. Start HTTP server (Dashboard) — optional in subprocess/stdio mode
   const httpServer = new HttpServer(config, keyStore);
-  await httpServer.start();
+  let httpStarted = false;
+  try {
+    await httpServer.start();
+    httpStarted = true;
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (!process.stdin.isTTY && code === 'EADDRINUSE') {
+      // Subprocess (Claude Desktop stdio) mode: another gateway HTTP instance is
+      // already running on this port — that's fine, MCP stdio still works.
+      logWarn(`HTTP port ${config.port} in use — Dashboard unavailable, MCP stdio continuing.`);
+    } else {
+      throw err;
+    }
+  }
 
-  // 5. Start MCP server (stdio) + expose SSE endpoint on HTTP server
+  // 5. Start MCP server (stdio)
   const server = new McpServer(config, keyStore);
   await server.start();
-  httpServer.setMcpServer(server);
-
-  printReady(config.port);
+  if (httpStarted) printReady(config.port);
 
   // Graceful shutdown
   const shutdown = (signal: string) => {

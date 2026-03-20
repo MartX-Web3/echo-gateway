@@ -6,8 +6,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export function loadDotEnv(): void {
-  const envPath = join(process.cwd(), '.env');
-  if (!existsSync(envPath)) return;
+  // Try process.cwd() first, then the gateway root relative to this file
+  // (handles subprocess mode where CWD may not be the gateway directory).
+  const scriptRoot = new URL('../../..', import.meta.url).pathname
+    .replace(/^\/([A-Za-z]:)/, '$1'); // strip leading slash on Windows paths
+  const candidates = [join(process.cwd(), '.env'), join(scriptRoot, '.env')];
+  const envPath = candidates.find(p => existsSync(p));
+  if (!envPath) return;
 
   for (const rawLine of readFileSync(envPath, 'utf8').split('\n')) {
     const line = rawLine.trim();

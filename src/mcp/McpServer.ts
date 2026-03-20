@@ -91,13 +91,13 @@ export class McpServer {
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
-  /** Expose the underlying MCP Server so HttpServer can attach SSE/HTTP transports. */
-  getServer(): Server { return this.server; }
-
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error('[Echo Gateway] MCP server started on stdio');
+    // Keep the event loop alive so the process does not exit when the HTTP
+    // server is not running (e.g. EADDRINUSE in subprocess/Claude Desktop mode).
+    process.stdin.resume();
+    console.error('[Echo Gateway] MCP server ready (stdio)');
   }
 
   // ── Tool registration ──────────────────────────────────────────────────

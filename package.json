@@ -8,9 +8,10 @@
     "echo-gateway": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc && cp -r src/dashboard dist/",
+    "build": "tsc && node scripts/copy-dashboard.mjs",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
+    "start:mcp": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
