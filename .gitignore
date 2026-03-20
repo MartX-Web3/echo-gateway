@@ -6,3 +6,4 @@ dist/
 ~/.echo/
 coverage/
 .vitest/
+smoke_test/
