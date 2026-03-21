@@ -214,7 +214,11 @@ export class UserOpBuilder {
       paymasterData:      '0x',
       paymasterVerificationGasLimit: '0x0',
       paymasterPostOpGasLimit:       '0x0',
-      signature:          ('0x' + '00'.repeat(65)) as Hex,   // dummy for gas estimation
+      // Use the real signature for gas estimation so pm_sponsorUserOperation simulates
+      // the full _validateRealtime code path (all 12 policy checks). A dummy sig exits
+      // at Check 1 (invalid key), severely under-estimating verificationGasLimit → OOG.
+      // Simulation (eth_call) does not persist state, so recordSpend / anti-replay are safe.
+      signature,
       ...(options?.eip7702Auth ? { eip7702Auth: options.eip7702Auth } : {}),
     };
 
@@ -291,9 +295,11 @@ export class UserOpBuilder {
       ENTRY_POINT_V07,
     ]);
 
-    // Pad gas limits by 20%
-    const verGas  = this._padGas(hexToBigInt(result.verificationGasLimit));
-    const callGas = this._padGas(hexToBigInt(result.callGasLimit));
+    // Use Pimlico's gas estimates exactly — do NOT pad.
+    // The paymaster signs over getUserOpHash which includes accountGasLimits.
+    // Modifying gas limits after pm_sponsorUserOperation invalidates the signature → AA34.
+    const verGas  = hexToBigInt(result.verificationGasLimit);
+    const callGas = hexToBigInt(result.callGasLimit);
 
     return {
       ...op,
