@@ -8,7 +8,7 @@ import { join } from 'node:path';
 export function loadDotEnv(): void {
   // Try process.cwd() first, then the gateway root relative to this file
   // (handles subprocess mode where CWD may not be the gateway directory).
-  const scriptRoot = new URL('../../..', import.meta.url).pathname
+  const scriptRoot = new URL('../..', import.meta.url).pathname
     .replace(/^\/([A-Za-z]:)/, '$1'); // strip leading slash on Windows paths
   const candidates = [join(process.cwd(), '.env'), join(scriptRoot, '.env')];
   const envPath = candidates.find(p => existsSync(p));

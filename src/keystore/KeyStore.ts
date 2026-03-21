@@ -164,6 +164,7 @@ export class KeyStore {
    */
   getKey(id: string): RawKey | null {
     this._assertUnlocked();
+    this._reloadStore();
     const stored = this._findKey(id);
     if (!stored) return null;
     return this._decryptKey(stored);
@@ -174,6 +175,7 @@ export class KeyStore {
    */
   getKeyMeta(id: string): Omit<StoredKey, 'encryptedKey' | 'iv' | 'authTag'> | null {
     this._assertUnlocked();
+    this._reloadStore();
     const stored = this._findKey(id);
     if (!stored) return null;
     const { encryptedKey: _e, iv: _i, authTag: _a, ...meta } = stored;
@@ -185,6 +187,7 @@ export class KeyStore {
    */
   listKeys(type?: KeyType): Omit<StoredKey, 'encryptedKey' | 'iv' | 'authTag'>[] {
     this._assertUnlocked();
+    this._reloadStore();
     return this.store!.keys
       .filter(k => type === undefined || k.type === type)
       .map(({ encryptedKey: _e, iv: _i, authTag: _a, ...meta }) => meta);
@@ -258,6 +261,7 @@ export class KeyStore {
    */
   hasKey(id: string): boolean {
     this._assertUnlocked();
+    this._reloadStore();
     return this._findKey(id) !== undefined;
   }
 
@@ -335,6 +339,19 @@ export class KeyStore {
     decipher.setAuthTag(tag);
     const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
     return dec.toString('utf8') as RawKey;
+  }
+
+  /**
+   * Re-read the store JSON from disk into memory without re-deriving encKey.
+   * Called before every read so that keys added by another process (e.g. the
+   * HTTP server writing new keys while the MCP stdio subprocess is running)
+   * are immediately visible.  Silently ignored if the file no longer exists.
+   */
+  private _reloadStore(): void {
+    if (!existsSync(this.path)) return;
+    try {
+      this.store = JSON.parse(readFileSync(this.path, 'utf8')) as KeyStoreFile;
+    } catch { /* leave existing in-memory store intact on parse error */ }
   }
 
   private _findKey(id: string): StoredKey | undefined {

@@ -16,7 +16,7 @@
  * Transport: stdio (default for OpenClaw local MCP)
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { Server }   from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -455,14 +455,12 @@ export class McpServer {
     if (instanceId && instanceId.length === 66) return instanceId as Hex;
     // Read active context set by Dashboard on wallet connect
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      // @ts-ignore
-      const fs = (() => { try { return require('node:fs'); } catch { return null; } })() as typeof import('node:fs') | null;
-      if (!fs) throw new Error('no fs');
       const ctxPath = (this.keyStore as unknown as { path: string }).path
         .replace('keystore.json', 'context.json');
-      const ctx = JSON.parse(fs.readFileSync(ctxPath, 'utf8')) as { activeInstanceId: string };
-      if (ctx.activeInstanceId) return ctx.activeInstanceId as Hex;
+      if (existsSync(ctxPath)) {
+        const ctx = JSON.parse(readFileSync(ctxPath, 'utf8')) as { activeInstanceId: string };
+        if (ctx.activeInstanceId) return ctx.activeInstanceId as Hex;
+      }
     } catch { /* context.json not found, fall through */ }
     // Fallback: first registered key
     const keys = this.keyStore.listKeys('execute');
@@ -494,7 +492,8 @@ export class McpServer {
 
   /**
    * Optional `eip7702Auth` from context.json (written by Dashboard / tooling).
-   * Required by Pimlico when sender is a 7702 EOA; delegate address must be EchoDelegationModule.
+   * Required by Pimlico when sender is a 7702 EOA that has not yet had delegation activated.
+   * Delegate address must be EchoDelegationModule.
    */
   private _readContextEip7702Auth(): BundlerEip7702Auth | undefined {
     try {
@@ -505,6 +504,22 @@ export class McpServer {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * Remove `eip7702Auth` from context.json after a successful UserOp that activated delegation.
+   * Once delegation is set on-chain it is permanent — future UserOps do not need eip7702Auth.
+   * A stale (old-nonce) auth would cause Pimlico to reject future UserOps, so we clear it now.
+   */
+  private _clearContextEip7702Auth(): void {
+    try {
+      const ctxPath = this.keyStore.path.replace('keystore.json', 'context.json');
+      if (!existsSync(ctxPath)) return;
+      const ctx = JSON.parse(readFileSync(ctxPath, 'utf8')) as Record<string, unknown>;
+      if (!('eip7702Auth' in ctx)) return;
+      delete ctx['eip7702Auth'];
+      writeFileSync(ctxPath, JSON.stringify(ctx, null, 2), 'utf8');
+    } catch { /* non-fatal — next UserOp will fail gracefully if auth is stale */ }
   }
 
   /**
@@ -539,9 +554,14 @@ export class McpServer {
     signature:     Hex,
   ): Promise<{ userOpHash: Hex; txHash: Hex }> {
     const eip7702Auth = this._readContextEip7702Auth();
-    return this.userOpBuilder.submit(account, target, innerCalldata, signature, {
+    const result = await this.userOpBuilder.submit(account, target, innerCalldata, signature, {
       ...(eip7702Auth ? { eip7702Auth } : {}),
     });
+    // If we submitted with eip7702Auth, delegation is now permanently active on-chain.
+    // Clear the stored auth so future UserOps are submitted as normal type-2 (not type-4).
+    // A stale nonce in eip7702Auth would cause Pimlico to reject subsequent UserOps.
+    if (eip7702Auth) this._clearContextEip7702Auth();
+    return result;
   }
 }
 

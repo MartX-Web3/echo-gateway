@@ -364,12 +364,30 @@
       <div class="section-header mb-16"><div class="section-title">EIP-7702 Auth</div></div>
       <div class="card mb-24">
         <div style="font-size:12px;color:var(--subtle);margin-bottom:12px;line-height:1.6">
-          The EIP-7702 authorization nonce must match the EOA's <code>eth_getTransactionCount</code> at the time the bundler broadcasts. If you sent a direct EOA transaction after onboarding (incrementing the nonce), the stored auth is stale and UserOps will fail. Click below to re-sign with the current nonce.
+          If your EOA does not yet have the EIP-7702 delegation active, click below to activate it. Requires MetaMask 12.7+ (or a wallet that supports <code>eth_signAuthorization</code>).
         </div>
         <div class="flex gap-8" style="margin-top:4px">
-          <button class="btn btn-primary btn-sm" id="resign-7702-btn" onclick="refreshEip7702Auth()">Re-sign EIP-7702 auth</button>
+          <button class="btn btn-primary btn-sm" id="resign-7702-btn" onclick="reactivateEip7702()">Reactivate via wallet</button>
         </div>
         <div id="resign-7702-status" class="alert alert-info hidden mt-16" style="font-size:12px"></div>
+        <!-- ── Private key activation (OKX / Rabby workaround) ─────────────── -->
+        <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px">Activate via private key</div>
+          <div style="font-size:11px;color:var(--subtle);margin-bottom:10px;line-height:1.55">
+            For wallets that strip type-4 transactions (OKX / Rabby). The Gateway signs the EIP-7702
+            authorization tuple and sends the type-4 tx directly — your wallet is bypassed entirely.
+            Your key is transmitted over <strong>localhost only</strong> and cleared immediately.
+            <span style="color:#e05252"> Development / testnet only.</span>
+          </div>
+          <div class="field" style="margin-bottom:8px">
+            <input type="password" id="pk-activate-input"
+                   placeholder="0x… (EOA private key, 32 bytes)"
+                   style="font-size:12px;font-family:'IBM Plex Mono',monospace"
+                   autocomplete="off" spellcheck="false" />
+          </div>
+          <button class="btn btn-ghost btn-sm" id="pk-activate-btn" onclick="activateViaPrivateKey()">Send type-4 tx</button>
+          <div id="pk-activate-status" class="alert alert-info hidden mt-16" style="font-size:12px"></div>
+        </div>
       </div>
       <div class="section-header mb-16"><div class="section-title">MCP Setup</div></div>
       <div class="card mb-24">
@@ -580,10 +598,12 @@
             <li><strong>Finish</strong> — Promote the pending key to that <code>instanceId</code> and save context.<span id="ob-wiz-s4" style="color:var(--subtle);font-size:11px"></span></li>
           </ol>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
+            <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-connect-wallet" onclick="showWalletPicker()">Connect wallet</button>
             <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-prepare" onclick="obWizardPrepare()">1 · Prepare key</button>
             <button type="button" class="btn btn-ghost btn-sm" id="ob-btn-onchain" onclick="obWizardOnchain()" disabled>2 · On-chain register + EIP-7702</button>
             <button type="button" class="btn btn-primary btn-sm" id="ob-btn-finish" onclick="obWizardFinish()" disabled>3 · Finish &amp; open Dashboard</button>
           </div>
+          <div id="ob-wallet-status" style="font-size:11px;color:var(--subtle);margin-top:8px"></div>
         </div>
 
         <details class="card mb-16" style="padding:12px 14px;font-size:12px;line-height:1.65" id="ob-instance-help-wrap">
@@ -1168,6 +1188,7 @@ async function connectWalletProvider(provider,name,msgEl){
     window._echoWalletName=name;
     closeModal('modal-privy');
     obOnWalletConnected(addr,name);
+    if(typeof window._echoAfterConnect==='function'){const cb=window._echoAfterConnect;window._echoAfterConnect=null;await cb();}
   }catch(e){
     if(msgEl){msgEl.textContent='Connection failed: '+(e.message||String(e));msgEl.className='alert alert-error mt-16';}
   }
@@ -2086,20 +2107,25 @@ async function obWizardOnchain(){
   // Build EIP-7702 authorizationList to activate delegation in the same type-4 tx.
   // The wallet (MetaMask v12.7+ / OKX) signs the authorization as part of eth_sendTransaction.
   // Delegation is persistent after this tx — future UserOps need no eip7702Auth.
+  if(!window._echoProvider){
+    showOb('Connect your wallet first (click "Connect wallet" above).','error');
+    return;
+  }
   let authorizationList;
   try{
-    if(!window._echoProvider)throw new Error('no provider');
     const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
     const from=accounts[0];
+    if(!from)throw new Error('no account returned');
     window._obWizardOwner=from;
-    const ncHex=await window._echoProvider.request({method:'eth_getTransactionCount',params:[from,'pending']});
-    const nonce=Number(BigInt(ncHex));
+    // Use 'latest' nonce for the authorization tuple so it matches the tx nonce
+    const ncHex=await window._echoProvider.request({method:'eth_getTransactionCount',params:[from,'latest']});
+    const nonceHex='0x'+Number(BigInt(ncHex)).toString(16);
     const chainId=Number(gatewayConfig.chainId);
     const delegate=gatewayConfig.contracts.echoDelegationModule;
     authorizationList=[{
       chainId:'0x'+chainId.toString(16),
       address:delegate,
-      nonce:'0x'+nonce.toString(16),
+      nonce:nonceHex,
     }];
     document.getElementById('ob-wiz-s2').textContent=' ✓ (included in tx)';
   }catch(e){
@@ -2112,12 +2138,27 @@ async function obWizardOnchain(){
     calldata,
     authorizationList,
     desc:'EchoOnboarding.registerInstanceAndEip7702'+(authorizationList?' + EIP-7702 activation (type-4 tx)':' (regular tx — no delegation)'),
-    onSuccess(receipt){
+    async onSuccess(receipt){
       const iid=receipt?parseInstanceIdFromReceipt(receipt):null;
       if(!iid){showOb('InstanceRegistered not found in receipt — check network and PolicyRegistry address.','error');return}
       obChainInstanceId=iid;
       document.getElementById('ob-wiz-s3').textContent=' ✓ '+iid.slice(0,10)+'…';
       document.getElementById('ob-btn-finish').disabled=false;
+      // Check if EIP-7702 delegation actually activated
+      if(authorizationList&&window._echoProvider){
+        try{
+          const from=window._obWizardOwner||(await window._echoProvider.request({method:'eth_requestAccounts'}))[0];
+          const code=await window._echoProvider.request({method:'eth_getCode',params:[from,'latest']});
+          if(!code||code==='0x'||code.length<6){
+            showOb(
+              '⚠ instanceId registered ✓ — but EIP-7702 delegation was NOT activated (wallet sent the tx as a regular type-2 tx, ignoring the authorizationList).\n\n'+
+              'Click "Finish" to complete setup, then go to Settings → EIP-7702 Auth and click "Reactivate EIP-7702 delegation" with MetaMask 12.7+ or OKX Wallet to activate delegation separately.',
+              'warn'
+            );
+            return;
+          }
+        }catch(_e){/* ignore code-check failure */}
+      }
       showOb('instanceId parsed — click Finish to open the Dashboard.','info');
     },
   });
@@ -2141,11 +2182,28 @@ async function obWizardFinish(){
         label:selectedTemplate??'custom',
       })}).then(r=>r.json());
     if(fin.error)throw new Error(fin.error);
-    // EIP-7702 delegation was activated inside the type-4 on-chain tx (Step 3).
-    // No eip7702Auth needs to be stored — the delegation is permanent on-chain.
-    // Future UserOps are submitted without eip7702Auth; the bundler sends them as type-2 txs.
+    // Try eth_signAuthorization to store a signed EIP-7702 auth.
+    // If the type-4 onboarding tx already activated delegation, this auth will be cleared after
+    // the first successful UserOp. If delegation was NOT activated (wallet sent type-2), the
+    // stored auth lets Pimlico activate it via the first swap's bundled type-4 tx.
+    let eip7702Auth=undefined;
+    try{
+      if(window._echoProvider&&gatewayConfig?.contracts?.echoDelegationModule){
+        const delegate=gatewayConfig.contracts.echoDelegationModule;
+        const chainId=Number(gatewayConfig.chainId);
+        const ncHex=await window._echoProvider.request({method:'eth_getTransactionCount',params:[owner,'latest']});
+        const nonceHex='0x'+Number(BigInt(ncHex)).toString(16);
+        const signedAuth=await window._echoProvider.request({
+          method:'eth_signAuthorization',
+          params:[{chainId:'0x'+chainId.toString(16),address:delegate,nonce:nonceHex}],
+        });
+        if(signedAuth?.r&&signedAuth?.s){
+          eip7702Auth=normalizeSignedAuth(signedAuth,chainId,delegate,nonceHex);
+        }
+      }
+    }catch(_authErr){/* eth_signAuthorization not supported by wallet — delegation relies on type-4 tx */}
     await fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({instanceId:obChainInstanceId})});
+      body:JSON.stringify({instanceId:obChainInstanceId,...(eip7702Auth?{eip7702Auth}:{})})});
     document.getElementById('ob-wiz-s4').textContent=' ✓';
     showOb('✓ Done — loading Dashboard…','info');
     window._echoProvider=null;
@@ -2160,44 +2218,182 @@ async function obWizardFinish(){
   }
 }
 
-/** Re-sign the EIP-7702 auth for the active account with the current EOA nonce.
- *  Called from Settings → EIP-7702 Auth section when auth nonce has gone stale. */
-async function refreshEip7702Auth(){
+/**
+ * Activate (or re-activate) EIP-7702 delegation.
+ *
+ * Two-path strategy:
+ *  Path A (preferred): eth_signAuthorization — wallet signs only the auth tuple; no type-4 tx sent.
+ *    The signed auth is stored in context.json and included in the NEXT UserOp submitted to Pimlico.
+ *    Pimlico bundles the auth into a type-4 tx, activating delegation permanently.
+ *    Works with OKX, Rabby, and any wallet supporting eth_signAuthorization.
+ *
+ *  Path B (fallback): eth_sendTransaction type-4 — wallet sends a self-tx activating delegation.
+ *    Works with MetaMask 12.7+. OKX / Rabby silently downgrade to type-2 (auth ignored).
+ */
+async function reactivateEip7702(){
   const btn=document.getElementById('resign-7702-btn');
   const status=document.getElementById('resign-7702-status');
+  if(!window._echoProvider){
+    if(status){status.textContent='Select your wallet in the popup to continue…';status.className='alert alert-info mt-16';}
+    window._echoAfterConnect=()=>reactivateEip7702();
+    showWalletPicker();
+    return;
+  }
   if(btn)btn.disabled=true;
   if(status){status.textContent='';status.className='alert alert-info hidden mt-16';}
   try{
-    if(!window._echoProvider){
-      throw new Error('No wallet connected — go to Settings and connect your wallet first, or reconnect via Onboarding.');
-    }
     if(!gatewayConfig?.contracts?.echoDelegationModule){
       throw new Error('Gateway config not loaded — refresh the page.');
     }
     const accounts=await window._echoProvider.request({method:'eth_requestAccounts'});
     const from=accounts[0];
+    if(!from)throw new Error('No account returned from wallet — reconnect and try again.');
     await ensureWalletChain();
     const delegate=gatewayConfig.contracts.echoDelegationModule;
     const chainId=Number(gatewayConfig.chainId);
-    const freshAuth=await sign7702ViaWallet(window._echoProvider,{delegate,chainId,from});
-    // Fetch current active instanceId from context
-    const ctx=await fetch('/api/context').then(r=>r.json()).catch(()=>({}));
-    const instanceId=ctx?.instanceId??ctx?.activeInstanceId;
-    if(!instanceId)throw new Error('No active instanceId in context — complete onboarding first.');
-    const res=await fetch('/api/context',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({instanceId,eip7702Auth:freshAuth})}).then(r=>r.json());
-    if(res?.error)throw new Error(res.error);
+    const ncHex=await window._echoProvider.request({method:'eth_getTransactionCount',params:[from,'latest']});
+    const nonceHex='0x'+Number(BigInt(ncHex)).toString(16);
+
+    // ── Path A: eth_signAuthorization (Pimlico-sponsored, no wallet tx) ──────
+    const instanceId=currentKey?.instanceId;
+    if(instanceId){
+      if(status){status.textContent='Requesting EIP-7702 authorization signature from wallet…';status.className='alert alert-info mt-16';}
+      let signedViaAuth=false;
+      try{
+        const signedAuth=await window._echoProvider.request({
+          method:'eth_signAuthorization',
+          params:[{chainId:'0x'+chainId.toString(16),address:delegate,nonce:nonceHex}],
+        });
+        const eip7702Auth=normalizeSignedAuth(signedAuth,chainId,delegate,nonceHex);
+        // Validate we got r/s/yParity
+        if(!signedAuth.r||!signedAuth.s)throw new Error('Wallet returned incomplete signature');
+        // Store in context.json — McpServer will include it in the next UserOp
+        const ctxRes=await fetch('/api/context',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({instanceId,eip7702Auth}),
+        }).then(r=>r.json());
+        if(ctxRes.error)throw new Error(ctxRes.error);
+        if(status){
+          status.textContent='✓ Authorization signed and stored. EIP-7702 delegation will be activated by Pimlico on your next swap — no separate transaction required!';
+          status.className='alert alert-info mt-16';
+        }
+        signedViaAuth=true;
+      }catch(authErr){
+        // eth_signAuthorization not supported — fall through to Path B
+        if(status){status.textContent='eth_signAuthorization not supported by wallet ('+((authErr.message||String(authErr)).slice(0,60))+') — trying type-4 tx…';status.className='alert alert-info mt-16';}
+      }
+      if(signedViaAuth){if(btn)btn.disabled=false;return;}
+    }
+
+    // ── Path B: eth_sendTransaction type-4 (MetaMask 12.7+) ──────────────────
+    if(status){status.textContent='Waiting for wallet confirmation — approve the type-4 EIP-7702 tx…';status.className='alert alert-info mt-16';}
+    const authorizationList=[{chainId:'0x'+chainId.toString(16),address:delegate,nonce:nonceHex}];
+    const txHash=await window._echoProvider.request({
+      method:'eth_sendTransaction',
+      params:[{from,to:from,data:'0x',value:'0x0',nonce:nonceHex,type:'0x4',authorizationList}],
+    });
+    // Check actual tx type immediately
+    let actualType='unknown';
+    try{
+      const txInfo=await window._echoProvider.request({method:'eth_getTransactionByHash',params:[txHash]});
+      if(txInfo)actualType=String(txInfo.type??txInfo.transactionType??'?');
+    }catch(_e){}
+    const isType4=actualType==='0x4'||actualType==='4';
     if(status){
-      status.textContent='✓ EIP-7702 auth refreshed (nonce '+Number(BigInt(freshAuth.nonce))+') — saved to context.';
+      status.textContent='Submitted '+(isType4?'(type-4 ✓)':'(type-'+actualType+' ⚠ wallet may not support EIP-7702)')+': '+txHash.slice(0,10)+'… — waiting…';
+      status.className='alert alert-info mt-16';
+    }
+    await waitForTx(txHash);
+    const code=await window._echoProvider.request({method:'eth_getCode',params:[from,'latest']});
+    if(!code||code==='0x'||code.length<6){
+      if(status){
+        status.textContent=isType4
+          ?'⚠ Type-4 tx confirmed but delegation NOT active. Try with MetaMask 12.7+, or use Path A: re-connect with a wallet that supports eth_signAuthorization.'
+          :'⚠ Wallet sent type-'+actualType+' (not type-4) — EIP-7702 not activated. Your wallet does not support type-4 txs. If eth_signAuthorization was also unsupported, install MetaMask 12.7+.';
+        status.className='alert alert-error mt-16';
+      }
+      return;
+    }
+    if(status){
+      status.textContent='✓ EIP-7702 delegation activated on-chain — delegation code set on your EOA. tx: '+txHash.slice(0,18)+'…';
       status.className='alert alert-info mt-16';
     }
   }catch(e){
     if(status){
-      status.textContent='Error: '+(e.message||String(e));
+      const msg=e.message||String(e);
+      status.textContent='Error: '+(msg.includes('rejected')||msg.includes('denied')?'Wallet request rejected — approve the request in your wallet popup.':msg);
       status.className='alert alert-error mt-16';
     }
   }finally{
     if(btn)btn.disabled=false;
+  }
+}
+
+/**
+ * Poll for a tx receipt using the Gateway RPC proxy (no wallet needed).
+ * Used by activateViaPrivateKey() which bypasses the browser wallet entirely.
+ */
+async function waitForTxViaProxy(hash){
+  for(let i=0;i<30;i++){
+    await new Promise(r=>setTimeout(r,3000));
+    const res=await fetch('/api/rpc',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getTransactionReceipt',params:[hash]}),
+    }).then(r=>r.json());
+    if(res.result)return res.result;
+  }
+  throw new Error('Transaction not confirmed after 90 s — check Etherscan.');
+}
+
+/**
+ * Activate EIP-7702 delegation using the user's raw private key.
+ *
+ * Flow:
+ *  1. POST /api/activate-delegation  { privateKey }
+ *  2. Gateway signs auth tuple + sends type-4 tx using the EOA's own key
+ *  3. Dashboard polls receipt via /api/rpc proxy (no wallet needed)
+ *  4. Verify eth_getCode confirms delegation code is set
+ */
+async function activateViaPrivateKey(){
+  const input=document.getElementById('pk-activate-input');
+  const btn=document.getElementById('pk-activate-btn');
+  const status=document.getElementById('pk-activate-status');
+  const pk=input?.value?.trim();
+  if(!pk||!/^0x[0-9a-fA-F]{64}$/.test(pk)){
+    if(status){status.textContent='Enter a valid private key (0x + 64 hex chars).';status.className='alert alert-error mt-16';}
+    return;
+  }
+  if(btn)btn.disabled=true;
+  if(status){status.textContent='Sending to Gateway…';status.className='alert alert-info mt-16';}
+  // Clear input immediately — don't leave key in the DOM
+  if(input)input.value='';
+  try{
+    const res=await fetch('/api/activate-delegation',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({privateKey:pk}),
+    }).then(r=>r.json());
+    if(res.error)throw new Error(res.error);
+    if(status){status.textContent='Tx submitted: '+res.txHash.slice(0,18)+'… — waiting for confirmation…';status.className='alert alert-info mt-16';}
+    await waitForTxViaProxy(res.txHash);
+    // Verify delegation code is set
+    const codeRes=await fetch('/api/rpc',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getCode',params:[res.eoa,'latest']}),
+    }).then(r=>r.json());
+    const code=codeRes.result;
+    if(!code||code==='0x'||code.length<6){
+      if(status){status.textContent='⚠ Tx confirmed but delegation code not visible yet — wait a moment and refresh.';status.className='alert alert-warn mt-16';}
+      return;
+    }
+    if(status){
+      status.textContent='✓ EIP-7702 delegation active on '+res.eoa.slice(0,10)+'… — code: '+code.slice(0,22)+'…';
+      status.className='alert alert-info mt-16';
+    }
+  }catch(err){
+    if(status){status.textContent='Error: '+(err.message||String(err));status.className='alert alert-error mt-16';}
+  }finally{
+    if(btn)btn.disabled=false;
+    if(input)input.value=''; // ensure cleared even on error path
   }
 }
 
@@ -2252,6 +2448,11 @@ function obOnWalletConnected(addr,walletName){
   const wn=document.getElementById('ob-wallet-name-display');if(wn)wn.textContent=walletName;
   const wa=document.getElementById('ob-wallet-addr-display');if(wa)wa.textContent=addr;
   if(gatewayConfig){const ua=document.getElementById('ob-uniswap-addr');if(ua)ua.textContent=gatewayConfig.contracts.uniswapV3Router}
+  // Update Step 4 wallet status line so user knows wallet is connected in wizard
+  const ws=document.getElementById('ob-wallet-status');
+  if(ws)ws.textContent='✓ '+walletName+' connected: '+addr.slice(0,10)+'…';
+  const cb=document.getElementById('ob-btn-connect-wallet');
+  if(cb){cb.textContent='✓ '+walletName;cb.disabled=true;}
 }
 
 function obValidateName(){
@@ -2379,6 +2580,35 @@ function showOb(msg,type){
 function hideOb(){document.getElementById('ob-error')?.classList.add('hidden');document.getElementById('ob-info')?.classList.add('hidden')}
 
 
+/**
+ * Normalise a wallet's eth_signAuthorization response into BundlerEip7702Auth format
+ * (what POST /api/context and Pimlico expect).
+ * Wallets vary: field names contractAddress vs address, hex vs decimal values, v vs yParity.
+ */
+function normalizeSignedAuth(raw, chainId, address, nonce){
+  function padHex32(v){
+    if(!v)return '0x'+'00'.repeat(32);
+    const clean=String(v).startsWith('0x')?String(v).slice(2):String(v);
+    return '0x'+clean.padStart(64,'0');
+  }
+  function toHex1(v){
+    if(v===undefined||v===null)return '0x00';
+    const n=Number(BigInt(String(v)));
+    return '0x'+(n%2).toString(16).padStart(2,'0');
+  }
+  const yp=(raw.yParity!==undefined&&raw.yParity!==null)
+    ?toHex1(raw.yParity)
+    :(raw.v!==undefined&&raw.v!==null?toHex1(raw.v):'0x00');
+  return {
+    chainId:  raw.chainId!==undefined?('0x'+Number(BigInt(String(raw.chainId))).toString(16)):('0x'+chainId.toString(16)),
+    address:  raw.address??raw.contractAddress??address,
+    nonce:    raw.nonce!==undefined?('0x'+Number(BigInt(String(raw.nonce))).toString(16)):nonce,
+    r: padHex32(raw.r),
+    s: padHex32(raw.s),
+    yParity: yp,
+  };
+}
+
 async function waitForTx(hash){
   for(let i=0;i<30;i++){
     await new Promise(r=>setTimeout(r,3000));
@@ -2428,8 +2658,24 @@ async function signPendingTx(){
     showResult('ptx-result','Waiting for wallet confirmation…','info');
     document.getElementById('ptx-sign-btn').disabled=true;
     const CAP=16777216n;
+    // For type-4 (EIP-7702) txs: re-fetch nonce right before signing (using 'latest')
+    // and set it explicitly in the tx so tx nonce == auth nonce.
+    let finalAuthList=authorizationList;
+    let txNonce=undefined;
+    if(authorizationList?.length){
+      try{
+        const ncHex=await provider.request({method:'eth_getTransactionCount',params:[from,'latest']});
+        const freshNonce='0x'+Number(BigInt(ncHex)).toString(16);
+        finalAuthList=authorizationList.map(a=>({...a,nonce:freshNonce}));
+        txNonce=freshNonce;
+      }catch(_e){/* keep original nonce on failure */}
+    }
     const txReq={from,to,data:calldata};
-    if(authorizationList?.length)txReq.authorizationList=authorizationList;
+    if(txNonce)txReq.nonce=txNonce;
+    if(finalAuthList?.length){
+      txReq.type='0x4';           // required — without this wallets treat it as type-2 and ignore authorizationList
+      txReq.authorizationList=finalAuthList;
+    }
 
     let estBig=null;
     try{
@@ -2447,11 +2693,22 @@ async function signPendingTx(){
 
     showResult('ptx-result',`Gas: ${gasBig.toString()} (est ${estBig!==null?estBig.toString():'n/a'}) — waiting wallet confirmation…`,'info');
     const txHash=await provider.request({method:'eth_sendTransaction',params:[txReq]});
-    showResult('ptx-result','Submitted: '+txHash.slice(0,10)+'… — waiting','info');
+    // Check actual tx type immediately for EIP-7702 txs
+    if(finalAuthList?.length){
+      let actualType='unknown';
+      try{
+        const txInfo=await provider.request({method:'eth_getTransactionByHash',params:[txHash]});
+        if(txInfo)actualType=String(txInfo.type??txInfo.transactionType??'?');
+      }catch(_e){}
+      const isType4=actualType==='0x4'||actualType==='4';
+      showResult('ptx-result','Submitted '+(isType4?'(type-4 ✓)':'(type-'+actualType+' ⚠ EIP-7702 may not activate)')+' — waiting…','info');
+    }else{
+      showResult('ptx-result','Submitted: '+txHash.slice(0,10)+'… — waiting','info');
+    }
     const receipt=await waitForTx(txHash);
     showResult('ptx-result','✓ Confirmed','info');
     setTimeout(()=>{closeModal('modal-pending-tx');document.getElementById('ptx-sign-btn').disabled=false;onSuccess?.(receipt)},800);
-  }catch(err){showResult('ptx-result',err.message,'error');document.getElementById('ptx-sign-btn').disabled=false}
+  }catch(err){showResult('ptx-result',(err.message||String(err)),'error');document.getElementById('ptx-sign-btn').disabled=false}
 }
 
 async function refreshPolicy(){if(!currentKey)return;const pol=await fetch('/api/policy/'+currentKey.instanceId).then(r=>r.json());if(!pol.error)currentPolicy=pol}

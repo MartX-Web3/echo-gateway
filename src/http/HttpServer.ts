@@ -17,12 +17,13 @@ import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import type { KeyStore } from '../keystore/KeyStore.js';
 import type { GatewayConfig } from '../config/index.js';
-import { registerPolicyRoutes }   from './routes/policy.js';
-import { registerSessionRoutes }  from './routes/sessions.js';
-import { registerKeystoreRoutes } from './routes/keystore.js';
-import { registerRpcProxyRoutes } from './routes/rpcProxy.js';
-import { registerSettingsRoutes } from './routes/settings.js';
-import { registerAuthRoutes }     from './routes/auth.js';
+import { registerPolicyRoutes }     from './routes/policy.js';
+import { registerSessionRoutes }    from './routes/sessions.js';
+import { registerKeystoreRoutes }   from './routes/keystore.js';
+import { registerRpcProxyRoutes }   from './routes/rpcProxy.js';
+import { registerSettingsRoutes }   from './routes/settings.js';
+import { registerAuthRoutes }       from './routes/auth.js';
+import { registerActivationRoutes } from './routes/activation.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,6 +53,7 @@ export class HttpServer {
     registerSessionRoutes(api, config);
     registerKeystoreRoutes(api, keyStore);
     registerSettingsRoutes(api, config);
+    registerActivationRoutes(api, config);
     if (config.privy) {
       registerAuthRoutes(api, config.privy.appId, config.privy.appSecret);
     }
