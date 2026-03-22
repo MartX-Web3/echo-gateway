@@ -34,6 +34,7 @@ import { UserOpBuilder }  from '../userop/UserOpBuilder.js';
 import type { BundlerEip7702Auth } from '../userop/UserOpBuilder.js';
 import { POLICY_REGISTRY_ABI } from '../contracts/PolicyRegistryABI.js';
 import type { GatewayConfig }  from '../config/index.js';
+import { ActivityLog }         from '../activity/ActivityLog.js';
 import type {
   SubmitIntentInput, SubmitIntentOutput,
   CreateSessionInput, CreateSessionOutput,
@@ -55,10 +56,12 @@ export class McpServer {
   private readonly userOpBuilder:  UserOpBuilder;
   private readonly client:         PublicClient;
   private readonly config:         GatewayConfig;
+  private readonly activityLog:    ActivityLog;
 
   constructor(config: GatewayConfig, keyStore: KeyStore) {
-    this.config   = config;
-    this.keyStore = keyStore;
+    this.config      = config;
+    this.keyStore    = keyStore;
+    this.activityLog = new ActivityLog(config.keystorePath);
 
     this.uniswap = new UniswapV3Tool({
       rpcUrl:     config.sepoliaRpcUrl,
@@ -183,19 +186,35 @@ export class McpServer {
       sig,
     );
 
-    return {
+    const output = {
       ...result,
       amountIn:  swapCalldata.quote.amountIn.toString(),
       amountOut: swapCalldata.quote.amountOut.toString(),
       feeTier:   swapCalldata.quote.feeTier,
     };
+
+    this.activityLog.append({
+      instanceId: input.instanceId,
+      txHash:     result.txHash,
+      userOpHash: result.userOpHash,
+      tokenIn:    input.tokenIn,
+      tokenOut:   input.tokenOut,
+      amountIn:   output.amountIn,
+      amountOut:  output.amountOut,
+      feeTier:    output.feeTier,
+      sessionId:  null,
+      timestamp:  Date.now(),
+    });
+
+    return output;
   }
 
   // ── MCP-02: echo_create_session ────────────────────────────────────────
 
   private async _createSession(input: CreateSessionInput): Promise<CreateSessionOutput> {
     input = { ...input, instanceId: this._resolveInstanceId(input.instanceId) as typeof input.instanceId };
-    // Generate session key and store it
+    // Build the createSession calldata first (needs sessionKeyHash)
+    // We generate the key, then rebuild calldata with the hash
     const { keyHash: sessionKeyHash } = await this.keyStore.addKey(
       `session-pending-${Date.now()}`,
       'session',
@@ -218,6 +237,22 @@ export class McpServer {
         BigInt(input.sessionExpiry),
       ],
     });
+
+    // Store the pendingTx calldata in the key's meta so the dashboard can offer a "Sign" button
+    // We update the key's meta by re-reading and patching keystore directly (addKey doesn't support update)
+    {
+      const { readFileSync, writeFileSync } = await import('node:fs');
+      const ks = JSON.parse(readFileSync(this.keyStore.path, 'utf8'));
+      const entry = ks.keys.find((k: { keyHash: string }) => k.keyHash === sessionKeyHash);
+      if (entry) {
+        entry.meta = {
+          calldata,
+          to:         this.config.contracts.policyRegistry,
+          instanceId: input.instanceId,
+        };
+        writeFileSync(this.keyStore.path, JSON.stringify(ks, null, 2));
+      }
+    }
 
     return {
       sessionId:     sessionKeyHash, // placeholder — real sessionId comes from on-chain event
@@ -281,12 +316,27 @@ export class McpServer {
       sig,
     );
 
-    return {
+    const sessionOutput = {
       ...result,
       amountIn:  swapCalldata.quote.amountIn.toString(),
       amountOut: swapCalldata.quote.amountOut.toString(),
       feeTier:   swapCalldata.quote.feeTier,
     };
+
+    this.activityLog.append({
+      instanceId: input.instanceId,
+      txHash:     result.txHash,
+      userOpHash: result.userOpHash,
+      tokenIn:    sess.tokenIn,
+      tokenOut:   sess.tokenOut,
+      amountIn:   sessionOutput.amountIn,
+      amountOut:  sessionOutput.amountOut,
+      feeTier:    sessionOutput.feeTier,
+      sessionId:  input.sessionId,
+      timestamp:  Date.now(),
+    });
+
+    return sessionOutput;
   }
 
   // ── MCP-04: echo_list_sessions ─────────────────────────────────────────
@@ -299,17 +349,19 @@ export class McpServer {
     const sessions = await Promise.all(
       sessionKeys.map(async (meta) => {
         try {
+          // Use the confirmed on-chain sessionId (stored in meta or as id after confirm)
+          const sessionId = (meta.meta?.['onChainSessionId'] ?? meta.id) as Hex;
           const sess = await this.client.readContract({
             address:      this.config.contracts.policyRegistry,
             abi:          POLICY_REGISTRY_ABI,
             functionName: 'getSessionValidation',
-            args:         [meta.id as Hex],
+            args:         [sessionId],
           });
 
           if (sess.instanceId.toLowerCase() !== input.instanceId.toLowerCase()) return null;
 
           return {
-            sessionId:      meta.id as Hex,
+            sessionId,
             tokenIn:        sess.tokenIn  as Address,
             tokenOut:       sess.tokenOut as Address,
             maxAmountPerOp: sess.maxAmountPerOp.toString(),

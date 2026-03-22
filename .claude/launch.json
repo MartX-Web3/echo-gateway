@@ -5,7 +5,7 @@
       "name": "echo-gateway",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 18790
+      "port": 3001
     }
   ]
 }

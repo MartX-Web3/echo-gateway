@@ -121,7 +121,7 @@ export class KeyStore {
     id: string,
     type: KeyType,
     label: string,
-    options?: { expiresAt?: number },
+    options?: { expiresAt?: number; meta?: Record<string, string> },
   ): Promise<{ rawKey: RawKey; keyHash: KeyHash }> {
     this._assertUnlocked();
 
@@ -147,6 +147,7 @@ export class KeyStore {
       keyHash,
       createdAt: Date.now(),
       ...(options?.expiresAt !== undefined && { expiresAt: options.expiresAt }),
+      ...(options?.meta !== undefined && { meta: options.meta }),
     };
 
     this.store!.keys.push(stored);

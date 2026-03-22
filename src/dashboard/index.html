@@ -114,6 +114,11 @@
     .step-title{font-size:13px;margin-bottom:3px}
     .step-desc{font-size:11px;color:var(--subtle);line-height:1.5}
     .spinner{width:14px;height:14px;border:2px solid var(--muted);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block;flex-shrink:0}
+    .wallet-widget{margin:0 8px 8px;border-radius:8px;padding:12px}
+    .wallet-widget-off{border:1px solid var(--border);background:var(--surface2)}
+    .wallet-widget-on{border:1px solid rgba(0,232,122,.18);background:rgba(0,232,122,.04)}
+    .wallet-widget-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+    .wallet-widget-addr{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--subtle);margin:4px 0 10px;word-break:break-all;line-height:1.5}
     @keyframes spin{to{transform:rotate(360deg)}}
     .hidden{display:none!important}
     .fade-in{animation:fadeIn .2s ease}
@@ -213,6 +218,22 @@
     <a class="nav-item" data-page="settings" onclick="navigate('settings')"><span class="nav-icon">⚙</span> Settings</a>
   </nav>
   <div class="sidebar-footer">
+    <!-- Wallet connect widget -->
+    <div id="wallet-widget-off" class="wallet-widget wallet-widget-off">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span class="wallet-widget-dot" style="background:var(--subtle)"></span>
+        <span style="font-size:11px;color:var(--subtle)">No wallet connected</span>
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;font-size:11px;padding:6px 12px" onclick="showWalletPicker()">Connect wallet</button>
+    </div>
+    <div id="wallet-widget-on" class="wallet-widget wallet-widget-on" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="wallet-widget-dot" style="background:var(--accent);box-shadow:0 0 5px var(--accent)"></span>
+        <span id="wallet-widget-name" style="font-size:11px;color:var(--text);font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span>
+      </div>
+      <div id="wallet-widget-addr" class="wallet-widget-addr"></div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;font-size:10px" onclick="disconnectWallet()">Disconnect</button>
+    </div>
     <div class="account-footer-pill" id="account-footer-pill" onclick="toggleFooterAccountMenu()" style="display:none">
       <span class="wallet-addr" id="wallet-addr">—</span>
       <span class="account-footer-chevron">▼</span>
@@ -696,7 +717,7 @@
 
 <div class="modal-overlay" id="modal-token"><div class="modal"><div class="modal-header"><div class="modal-title" id="modal-token-title">Set Token Limit</div><button class="modal-close" onclick="closeModal('modal-token')">×</button></div><div class="field"><label>Token Address</label><input type="text" id="mt-token-addr" placeholder="0x…" oninput="mtDebouncedTokenLookup()" onkeydown="if(event.key==='Enter'){mtLookupTokenMeta()}"/><div class="field-hint" style="display:flex;justify-content:space-between;gap:12px"><span>Symbol: <span class="mono" id="mt-token-symbol">—</span></span><span>Balance: <span class="mono" id="mt-token-balance">—</span></span></div></div><div class="grid-2" style="gap:12px"><div class="field" style="margin-bottom:0"><label>Max per Swap (USDC)</label><input type="number" id="mt-perOp" placeholder="100" min="1"/></div><div class="field" style="margin-bottom:0"><label>Max per Day (USDC)</label><input type="number" id="mt-perDay" placeholder="500" min="1"/></div></div><div id="mt-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" onclick="saveTokenLimit()">Save</button><button class="btn btn-ghost" onclick="closeModal('modal-token')">Cancel</button></div></div></div>
 
-<div class="modal-overlay" id="modal-create-session"><div class="modal"><div class="modal-header"><div class="modal-title">New Session</div><button class="modal-close" onclick="closeModal('modal-create-session')">×</button></div><div class="grid-2" style="gap:12px"><div class="field"><label>Token In</label><select id="ms-tokenIn"><option value="0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43">MockUSDC</option><option value="0xD9100773B0B2717B927265Ce92afeA7c3dCA620E">MockWETH</option></select></div><div class="field"><label>Token Out</label><select id="ms-tokenOut"><option value="0xD9100773B0B2717B927265Ce92afeA7c3dCA620E">MockWETH</option><option value="0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43">MockUSDC</option></select></div><div class="field"><label>Max per Swap (USDC)</label><input type="number" id="ms-maxPerOp" placeholder="50"/></div><div class="field"><label>Total Budget (USDC)</label><input type="number" id="ms-budget" placeholder="350"/></div><div class="field"><label>Max ops per day</label><input type="number" id="ms-opsPerDay" placeholder="2" min="1"/></div><div class="field"><label>Duration (days)</label><input type="number" id="ms-days" placeholder="30" min="1" max="365"/></div></div><div id="ms-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" id="ms-create-btn" onclick="createSession()">Create Session</button><button class="btn btn-ghost" onclick="closeModal('modal-create-session')">Cancel</button></div></div></div>
+<div class="modal-overlay" id="modal-create-session"><div class="modal"><div class="modal-header"><div class="modal-title">New Session</div><button class="modal-close" onclick="closeModal('modal-create-session')">×</button></div><div class="grid-2" style="gap:12px"><div class="field"><label>Token In</label><select id="ms-tokenIn"><option value="0xBa9D46448e4142AC7a678678eFf6882D9197d716">MockUSDC</option><option value="0xF0527287E6B7570BdaaDe7629C47D60a3e0eF104">MockWETH</option></select></div><div class="field"><label>Token Out</label><select id="ms-tokenOut"><option value="0xF0527287E6B7570BdaaDe7629C47D60a3e0eF104">MockWETH</option><option value="0xBa9D46448e4142AC7a678678eFf6882D9197d716">MockUSDC</option></select></div><div class="field"><label>Max per Swap (USDC)</label><input type="number" id="ms-maxPerOp" placeholder="50"/></div><div class="field"><label>Total Budget (USDC)</label><input type="number" id="ms-budget" placeholder="350"/></div><div class="field"><label>Max ops per day</label><input type="number" id="ms-opsPerDay" placeholder="2" min="1"/></div><div class="field"><label>Duration (days)</label><input type="number" id="ms-days" placeholder="30" min="1" max="365"/></div></div><div id="ms-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" id="ms-create-btn" onclick="createSession()">Create Session</button><button class="btn btn-ghost" onclick="closeModal('modal-create-session')">Cancel</button></div></div></div>
 
 <div class="modal-overlay" id="modal-pending-tx"><div class="modal"><div class="modal-header"><div class="modal-title">Sign Transaction</div><button class="modal-close" onclick="closeModal('modal-pending-tx')">×</button></div><p style="font-size:12px;color:var(--subtle);margin-bottom:16px;line-height:1.6" id="ptx-desc"></p><div class="card card-sm mb-16" style="font-size:11px;color:var(--subtle);font-family:'IBM Plex Mono',monospace;word-break:break-all;line-height:1.6" id="ptx-details"></div><div id="ptx-result" class="hidden mb-16"></div><div class="flex gap-8"><button class="btn btn-primary" id="ptx-sign-btn" onclick="signPendingTx()">Sign in wallet</button><button class="btn btn-ghost" onclick="closeModal('modal-pending-tx')">Cancel</button></div></div></div>
 
@@ -751,8 +772,8 @@ async function getPrivyClient(){
 
 const TOKENS={
   // Echo mock tokens (Sepolia MVP)
-  '0x74c954c2e6f090d0ef94ca9a220f5b4d70ab6a43':{symbol:'MockUSDC',decimals:6},
-  '0xd9100773b0b2717b927265ce92afea7c3dca620e':{symbol:'MockWETH',decimals:18},
+  '0xba9d46448e4142ac7a678678eff6882d9197d716':{symbol:'MockUSDC',decimals:6},
+  '0xf0527287e6b7570bdaade7629c47d60a3e0ef104':{symbol:'MockWETH',decimals:18},
   // Sepolia canonical test tokens (legacy)
   '0x94a9d9ac8a22534e3faca9f4e7f2e2cf85d5e4c8':{symbol:'USDC',decimals:6},
   '0x7b79995e5f793a07bc00c21412e50ecae098e7f9':{symbol:'WETH',decimals:18},
@@ -828,7 +849,10 @@ async function loadAllAccounts(){
   if(!keys.length){navigate('onboarding');return}
   allKeysForCurrentWallet=keys;
   const lastId=localStorage.getItem('echo-selected-instance-id');
-  const preferred=keys.find(k=>k.instanceId===lastId);
+  // Prefer: localStorage selection → context.json active instance → keys[0]
+  const ctxRes=await fetch('/api/context').then(r=>r.json()).catch(()=>null);
+  const ctxId=ctxRes?.active?.instanceId;
+  const preferred=keys.find(k=>k.instanceId===lastId)||keys.find(k=>k.instanceId===ctxId)||keys[0];
   currentKey=preferred||keys[0];
   localStorage.setItem('echo-selected-instance-id',currentKey.instanceId);
   const pol=await fetch('/api/policy/'+currentKey.instanceId).then(r=>r.json());
@@ -1276,7 +1300,7 @@ async function _connectWithPrivyProvider(provider,name,knownAddress){
   }catch(e){showOb('Privy connection error: '+(e.message||e),'error')}
 }
 
-function renderOverview(){
+async function renderOverview(){
   if(!currentPolicy||!currentKey)return;
   const p=currentPolicy;
   document.getElementById('ov-status-pill').innerHTML=p.paused?'<span class="pill pill-red"><span class="dot"></span> Paused</span>':'<span class="pill pill-green"><span class="dot"></span> Active</span>';
@@ -1291,6 +1315,20 @@ function renderOverview(){
   const acct=currentKey.accountAddress??'—';
   document.getElementById('ov-account-addr').textContent=acct;
   document.getElementById('ov-etherscan-link').href='https://sepolia.etherscan.io/address/'+acct;
+  // Recent activity (last 3)
+  const ovList=document.getElementById('ov-activity-list');
+  try{
+    const res=await fetch('/api/activity?instanceId='+encodeURIComponent(currentKey.instanceId)).then(r=>r.json());
+    const entries=(res.entries||[]).slice(0,3);
+    if(!entries.length){ovList.innerHTML='<div style="color:var(--subtle);font-size:12px;padding:16px 0;text-align:center">No activity yet</div>';return;}
+    ovList.innerHTML=entries.map((e,i)=>{
+      const type=e.sessionId?'Session':'Realtime';
+      const pill=e.sessionId?'pill-blue':'pill-green';
+      const date=new Date(e.timestamp).toLocaleString();
+      const sep=i<entries.length-1?'border-bottom:1px solid var(--border)':'';
+      return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;${sep}"><span class="pill ${pill}" style="min-width:64px;justify-content:center">${type}</span><span style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:12px">${tokenSymbol(e.tokenOut)}</span><span class="mono" style="font-size:12px">${fmtUsd(BigInt(e.amountIn))}</span><span style="color:var(--subtle);font-size:11px;min-width:100px;text-align:right">${date}</span><a href="https://sepolia.etherscan.io/tx/${e.txHash}" target="_blank" style="color:var(--blue);font-size:11px;margin-left:8px">↗</a></div>`;
+    }).join('');
+  }catch(e){ovList.innerHTML='<div style="color:var(--subtle);font-size:12px;padding:16px 0;text-align:center">No activity yet</div>'}
 }
 
 function renderPolicy(){
@@ -1646,30 +1684,121 @@ async function loadActivity(){
   const tbody=document.getElementById('activity-table');
   tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--subtle);padding:20px"><span class="spinner"></span></td></tr>';
   try{
-    const rpcUrl=new URL('/api/rpc',window.location.href).toString();
-    const provider=new ethers.JsonRpcProvider(rpcUrl);
-    const iface=new ethers.Interface(['event PolicySpendUpdated(bytes32 indexed instanceId,bytes32 indexed sessionId,address tokenOut,uint256 amountIn,bool isExploration)']);
-    // Free-tier public RPCs often restrict eth_getLogs block ranges.
-    // Query only the latest 10 blocks to stay within limits.
-    const latestBlock=await provider.getBlockNumber();
-    const fromBlock=Math.max(0,latestBlock-9);
-    const logs=await provider.getLogs({
-      address:gatewayConfig.contracts.policyRegistry,
-      topics:[iface.getEvent('PolicySpendUpdated').topicHash,currentKey.instanceId],
-      fromBlock,
-      toBlock:latestBlock,
-    });
-    if(!logs.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--subtle);padding:30px">No activity yet</td></tr>';return}
-    tbody.innerHTML=logs.slice().reverse().map(log=>{
-      const{tokenOut,amountIn,isExploration,sessionId}=iface.parseLog(log).args;
-      const sess=sessionId==='0x'+'00'.repeat(32)?'—':sessionId.slice(0,8)+'…';
-      return`<tr><td><span class="pill ${isExploration?'pill-orange':'pill-blue'}">${isExploration?'Exploration':'Session'}</span></td><td><span class="addr copyable-addr" style="font-size:13px" onclick="copyToClipboard('${tokenOut}',this)" title="Copy full token address">${tokenSymbol(tokenOut)}<span class="copy-icon" aria-hidden="true">⧉</span></span></td><td class="mono">${fmtUsd(amountIn)}</td><td class="addr">${sess}</td><td style="color:var(--subtle);font-size:11px">${log.blockNumber}</td><td><a href="https://sepolia.etherscan.io/tx/${log.transactionHash}" target="_blank" style="color:var(--blue);font-size:11px">↗</a></td></tr>`;
+    const res=await fetch('/api/activity?instanceId='+encodeURIComponent(currentKey.instanceId)).then(r=>r.json());
+    const entries=res.entries||[];
+    if(!entries.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--subtle);padding:30px">No activity yet</td></tr>';return}
+    tbody.innerHTML=entries.map(e=>{
+      const sess=e.sessionId?e.sessionId.slice(0,8)+'…':'—';
+      const type=e.sessionId?'Session':'Realtime';
+      const pill=e.sessionId?'pill-blue':'pill-green';
+      const date=new Date(e.timestamp).toLocaleString();
+      return`<tr><td><span class="pill ${pill}">${type}</span></td><td><span class="addr copyable-addr" style="font-size:13px" onclick="copyToClipboard('${e.tokenOut}',this)" title="Copy full token address">${tokenSymbol(e.tokenOut)}<span class="copy-icon" aria-hidden="true">⧉</span></span></td><td class="mono">${fmtUsd(BigInt(e.amountIn))}</td><td class="addr">${sess}</td><td style="color:var(--subtle);font-size:11px">${date}</td><td><a href="https://sepolia.etherscan.io/tx/${e.txHash}" target="_blank" style="color:var(--blue);font-size:11px">↗</a></td></tr>`;
     }).join('');
   }catch(err){tbody.innerHTML=`<tr><td colspan="6" style="color:var(--danger);padding:20px">${err.message}</td></tr>`}
 }
 
 async function loadSessions(){
-  document.getElementById('sessions-content').innerHTML='<div style="color:var(--subtle);font-size:13px;text-align:center;padding:40px 0">No active sessions.<br><span style="font-size:12px">Create a session to enable autonomous agent execution.</span></div>';
+  if(!currentKey)return;
+  const container=document.getElementById('sessions-content');
+  container.innerHTML='<div style="text-align:center;color:var(--subtle);padding:40px 0">Loading…</div>';
+  try{
+    const res=await fetch('/api/sessions?instanceId='+encodeURIComponent(currentKey.instanceId)).then(r=>r.json());
+    const sessions=res.sessions||[];
+    if(!sessions.length){
+      container.innerHTML='<div style="color:var(--subtle);font-size:13px;text-align:center;padding:40px 0">No active sessions.<br><span style="font-size:12px">Create a session to enable autonomous agent execution.</span></div>';
+      return;
+    }
+    container.innerHTML=sessions.map(s=>{
+      if(s.status==='pending'){
+        const labelParts=s.label.split('→');
+        const tIn=labelParts[0]?.split(' ').pop()||'?';
+        const tOut=labelParts[1]||'?';
+        const signBtn=s.pendingTx
+          ?`<button class="btn btn-primary btn-sm" onclick='activateSession(${JSON.stringify(s)})'>Sign to activate</button>`
+          :`<span style="font-size:11px;color:var(--subtle)">No calldata stored</span>`;
+        const sJson=JSON.stringify(s).replace(/'/g,'&apos;');
+        return`<div class="card mb-12">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+            <div>
+              <div style="font-size:13px;margin-bottom:4px">${tokenSymbol(tIn)} → ${tokenSymbol(tOut)}</div>
+              <div class="addr copyable-addr" onclick="copyToClipboard('${s.sessionId}',this)" title="Copy session ID">${s.sessionId.slice(0,10)}…${s.sessionId.slice(-6)}<span class="copy-icon">⧉</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px"><span class="pill pill-orange">Pending signature</span>${signBtn}</div>
+          </div>
+          <div class="alert alert-warn" style="font-size:11px;margin-bottom:10px">Awaiting on-chain registration. Sign the transaction to activate this session.</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input id="resolve-tx-${s.sessionId.slice(2,10)}" type="text" placeholder="Already signed? Paste tx hash (0x…)" style="font-size:11px;padding:5px 10px;flex:1"/>
+            <button class="btn btn-ghost btn-sm" onclick="resolveSessionByTx('${s.sessionId}','resolve-tx-${s.sessionId.slice(2,10)}')">Confirm</button>
+          </div>
+          <div id="resolve-result-${s.sessionId.slice(2,10)}" class="hidden" style="margin-top:6px"></div>
+        </div>`;
+      }
+      const expiry=new Date(s.sessionExpiry*1000).toLocaleDateString();
+      const spent=fmtUsd(BigInt(s.totalSpent));
+      const budget=fmtUsd(BigInt(s.totalBudget));
+      const maxPerOp=fmtUsd(BigInt(s.maxAmountPerOp));
+      const pct=Number(s.totalBudget)>0?Math.min(100,Math.round(Number(s.totalSpent)/Number(s.totalBudget)*100)):0;
+      const statusPill=s.active?'<span class="pill pill-green"><span class="dot"></span> Active</span>':'<span class="pill pill-gray">Inactive</span>';
+      return`<div class="card mb-12">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+          <div>
+            <div style="font-size:13px;margin-bottom:4px">${tokenSymbol(s.tokenIn)} → ${tokenSymbol(s.tokenOut)}</div>
+            <div class="addr copyable-addr" onclick="copyToClipboard('${s.sessionId}',this)" title="Copy session ID">${s.sessionId.slice(0,10)}…${s.sessionId.slice(-6)}<span class="copy-icon">⧉</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">${statusPill}<button class="btn btn-ghost btn-sm" onclick="revokeSession('${s.sessionId}')">Revoke</button></div>
+        </div>
+        <div class="grid-3" style="gap:8px;margin-bottom:12px">
+          <div><div class="card-label">Max per op</div><div class="mono" style="font-size:13px">${maxPerOp}</div></div>
+          <div><div class="card-label">Ops / day</div><div class="mono" style="font-size:13px">${s.maxOpsPerDay} <span style="color:var(--subtle)">(${s.dailyOps} today)</span></div></div>
+          <div><div class="card-label">Expires</div><div class="mono" style="font-size:13px">${expiry}</div></div>
+        </div>
+        <div class="card-label">Budget used</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span class="mono">${spent}</span><span class="mono" style="color:var(--subtle)">${budget}</span></div>
+        <div class="progress-track"><div class="progress-fill ${pctClass(pct)}" style="width:${pct}%"></div></div>
+      </div>`;
+    }).join('');
+  }catch(err){
+    container.innerHTML=`<div style="color:var(--danger);padding:20px">${err.message}</div>`;
+  }
+}
+function activateSession(s){
+  const SESSION_CREATED_TOPIC=ethers.id('SessionCreated(bytes32,bytes32,address)');
+  openPendingTx({
+    to:       s.pendingTx.to,
+    calldata: s.pendingTx.calldata,
+    chainId:  s.pendingTx.chainId,
+    desc:`Activate session: ${s.sessionId.slice(0,8)}…`,
+    onSuccess:async(receipt)=>{
+      // Parse SessionCreated event to get real on-chain sessionId
+      const log=receipt?.logs?.find(l=>l.topics?.[0]?.toLowerCase()===SESSION_CREATED_TOPIC.toLowerCase());
+      if(log?.topics?.[1]){
+        const onChainSessionId=log.topics[1];
+        await fetch('/api/sessions/confirm',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({keyHash:s.sessionId,onChainSessionId})}).catch(()=>{});
+      }
+      loadSessions();
+    },
+  });
+}
+async function resolveSessionByTx(keyHash,inputId){
+  const txHash=document.getElementById(inputId)?.value?.trim();
+  const resultId='resolve-result-'+inputId.replace('resolve-tx-','');
+  const resultEl=document.getElementById(resultId);
+  if(!txHash||!txHash.startsWith('0x')){showResult(resultEl,'Enter a valid tx hash (0x…)','error');resultEl.classList.remove('hidden');return;}
+  showResult(resultEl,'Looking up transaction…','info');resultEl.classList.remove('hidden');
+  try{
+    const res=await fetch('/api/sessions/resolve-tx',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({keyHash,txHash})}).then(r=>r.json());
+    if(res.error){showResult(resultEl,res.error,'error');return;}
+    showResult(resultEl,'✓ Session confirmed on-chain','info');
+    setTimeout(()=>loadSessions(),800);
+  }catch(e){showResult(resultEl,e.message||String(e),'error')}
+}
+async function revokeSession(sessionId){
+  if(!confirm('Revoke this session? This cannot be undone.'))return;
+  const res=await fetch('/api/sessions/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId})}).then(r=>r.json());
+  if(res.error){alert(res.error);return;}
+  openPendingTx({...res.pendingTx,desc:`Revoke session ${sessionId.slice(0,8)}…`,onSuccess:()=>{loadSessions()}});
 }
 async function createSession(){
   const tokenIn=document.getElementById('ms-tokenIn').value,tokenOut=document.getElementById('ms-tokenOut').value;
@@ -1787,11 +1916,11 @@ function copyMcpConfig(){
 
 const TPL={
   conservative:{globalDaily:400,globalTotal:2000,exploreBudget:20,exploreTx:5,days:90,
-    tokens:[{token:'0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43',symbol:'MockUSDC',perOp:50,perDay:200}]},
+    tokens:[{token:'0xBa9D46448e4142AC7a678678eFf6882D9197d716',symbol:'MockUSDC',perOp:50,perDay:200}]},
   standard:    {globalDaily:1000,globalTotal:5000,exploreBudget:50,exploreTx:10,days:90,
-    tokens:[{token:'0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43',symbol:'MockUSDC',perOp:100,perDay:500}]},
+    tokens:[{token:'0xBa9D46448e4142AC7a678678eFf6882D9197d716',symbol:'MockUSDC',perOp:100,perDay:500}]},
   active:      {globalDaily:4000,globalTotal:20000,exploreBudget:100,exploreTx:25,days:90,
-    tokens:[{token:'0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43',symbol:'MockUSDC',perOp:500,perDay:2000}]},
+    tokens:[{token:'0xBa9D46448e4142AC7a678678eFf6882D9197d716',symbol:'MockUSDC',perOp:500,perDay:2000}]},
 };
 let selectedTemplate=null;
 let obTokens=[];
@@ -2209,6 +2338,7 @@ async function obWizardFinish(){
     window._echoProvider=null;
     window._echoWalletName=null;
     window._echoWalletIsPrivy=false;
+    updateWalletWidget();
     obResetOnboardingWizard();
     await loadAllAccounts();
     navigate('overview');
@@ -2442,6 +2572,22 @@ function obNextStep(current){
   obGoStep(current+1);
 }
 
+function updateWalletWidget(){
+  const connected=!!window._echoProvider;
+  document.getElementById('wallet-widget-off').style.display=connected?'none':'block';
+  document.getElementById('wallet-widget-on').style.display=connected?'block':'none';
+  if(connected){
+    document.getElementById('wallet-widget-name').textContent=window._echoWalletName||'Wallet';
+    window._echoProvider.request({method:'eth_accounts'}).then(accs=>{
+      const addr=accs?.[0]??'';
+      document.getElementById('wallet-widget-addr').textContent=addr?addr.slice(0,6)+'…'+addr.slice(-4):'';
+    }).catch(()=>{});
+  }
+}
+function disconnectWallet(){
+  window._echoProvider=null;window._echoWalletName=null;window._echoWalletIsPrivy=false;
+  updateWalletWidget();
+}
 function obOnWalletConnected(addr,walletName){
   const btn=document.getElementById('ob-connect-btn');if(btn){btn.innerHTML='✓ '+walletName;btn.disabled=true}
   const wc=document.getElementById('ob-wallet-connected');if(wc)wc.classList.remove('hidden');
@@ -2453,6 +2599,7 @@ function obOnWalletConnected(addr,walletName){
   if(ws)ws.textContent='✓ '+walletName+' connected: '+addr.slice(0,10)+'…';
   const cb=document.getElementById('ob-btn-connect-wallet');
   if(cb){cb.textContent='✓ '+walletName;cb.disabled=true;}
+  updateWalletWidget();
 }
 
 function obValidateName(){
@@ -2496,8 +2643,8 @@ function obRenderTokenList(){
 
 function obAddToken(){
   const KNOWN=[
-    {token:'0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43',symbol:'MockUSDC'},
-    {token:'0xD9100773B0B2717B927265Ce92afeA7c3dCA620E',symbol:'MockWETH'},
+    {token:'0xBa9D46448e4142AC7a678678eFf6882D9197d716',symbol:'MockUSDC'},
+    {token:'0xF0527287E6B7570BdaaDe7629C47D60a3e0eF104',symbol:'MockWETH'},
   ];
   const existing=new Set(obTokens.map(t=>t.token.toLowerCase()));
   const available=KNOWN.filter(k=>!existing.has(k.token.toLowerCase()));
@@ -2566,6 +2713,7 @@ async function createAccountManual(){
     window._echoProvider=null;
     window._echoWalletName=null;
     window._echoWalletIsPrivy=false;
+    updateWalletWidget();
     await loadAllAccounts();
     navigate('overview');
   }catch(err){showOb(err.message??String(err),'error')}

@@ -24,6 +24,7 @@ import { registerRpcProxyRoutes }   from './routes/rpcProxy.js';
 import { registerSettingsRoutes }   from './routes/settings.js';
 import { registerAuthRoutes }       from './routes/auth.js';
 import { registerActivationRoutes } from './routes/activation.js';
+import { ActivityLog }              from '../activity/ActivityLog.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -50,13 +51,21 @@ export class HttpServer {
     const api = express.Router();
     registerRpcProxyRoutes(api, config);
     registerPolicyRoutes(api, config);
-    registerSessionRoutes(api, config);
+    registerSessionRoutes(api, config, keyStore);
     registerKeystoreRoutes(api, keyStore);
     registerSettingsRoutes(api, config);
     registerActivationRoutes(api, config);
     if (config.privy) {
       registerAuthRoutes(api, config.privy.appId, config.privy.appSecret);
     }
+
+    // Activity log endpoint
+    const activityLog = new ActivityLog(config.keystorePath);
+    api.get('/activity', (req: Request, res: Response) => {
+      const instanceId = typeof req.query['instanceId'] === 'string' ? req.query['instanceId'] : undefined;
+      res.json({ entries: activityLog.list(instanceId) });
+    });
+
     this.app.use('/api', api);
 
     // Config endpoint — exposes non-sensitive config to Dashboard JS

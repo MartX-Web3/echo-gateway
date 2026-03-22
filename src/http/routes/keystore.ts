@@ -191,20 +191,32 @@ export function registerKeystoreRoutes(router: Router, keyStore: KeyStore): void
     }
   });
 
-  // GET /api/context — returns the currently active account (set by Dashboard on wallet connect)
+  // GET /api/context — returns the currently active account (reads context.json, falls back to keys[0])
   router.get('/context', (_req: Request, res: Response) => {
     try {
       const keys = keyStore.listKeys('execute');
       if (!keys.length) { res.json({ active: null }); return; }
-      // Return first key's context — in multi-account scenario this is the last-set active
-      const active = keys[0]!;
+
+      // Prefer the instanceId persisted in context.json (set via POST /api/context)
+      let preferred = keys[0]!;
+      const ctxPath = keyStore.path.replace('keystore.json', 'context.json');
+      if (existsSync(ctxPath)) {
+        try {
+          const ctx = JSON.parse(readFileSync(ctxPath, 'utf8')) as { activeInstanceId?: string };
+          if (ctx.activeInstanceId) {
+            const match = keys.find(k => k.id === ctx.activeInstanceId);
+            if (match) preferred = match;
+          }
+        } catch { /* ignore */ }
+      }
+
       res.json({
         active: {
-          instanceId:     active.id,
-          accountAddress: active.label.match(/account:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
-          ownerAddress:   active.label.match(/owner:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
-          name:           active.label.split('|')[0] ?? active.label,
-          keyHash:        active.keyHash,
+          instanceId:     preferred.id,
+          accountAddress: preferred.label.match(/account:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
+          ownerAddress:   preferred.label.match(/owner:(0x[0-9a-fA-F]{40})/)?.[1] ?? null,
+          name:           preferred.label.split('|')[0] ?? preferred.label,
+          keyHash:        preferred.keyHash,
         },
       });
     } catch (err) {

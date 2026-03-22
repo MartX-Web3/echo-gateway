@@ -40,6 +40,8 @@ export interface StoredKey {
   createdAt: number;
   /** Optional: unix timestamp (ms) when this key expires */
   expiresAt?: number;
+  /** Optional: arbitrary metadata (e.g. pendingTx calldata for session keys) */
+  meta?: Record<string, string>;
 }
 
 export interface KeyStoreFile {
