@@ -1,6 +1,6 @@
 {
   "name": "@echo-protocol/gateway",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Echo Protocol Gateway — local MCP server + execution engine for AI agent DeFi",
   "type": "module",
   "main": "dist/index.js",
