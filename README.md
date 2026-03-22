@@ -1,342 +1,270 @@
 # echo-gateway
 
-The local execution gateway for Echo Protocol. Runs on your machine alongside your AI agent framework and serves as the bridge between agent intent and on-chain execution.
+The local execution gateway for Echo Protocol. Runs on your machine alongside your AI agent (Claude Desktop or any MCP-compatible framework) and bridges agent intent to on-chain ERC-4337 execution.
 
-> **Local-first.** The gateway runs entirely on your machine. No cloud server, no third-party relay. Your keys never leave your local environment.
-
-**EIP-7702 (MVP):** `UserOperation.sender` is the **user EOA**. The EOA delegates execution code to **`EchoDelegationModule`** (`ECHO_DELEGATION_MODULE`). Pimlico requests include optional **`eip7702Auth`** (signed authorization). Real-time UserOp signatures use **`0x03` + 32-byte ExecuteKey** (`validateFor7702`); session mode remains **`0x02`**. On-chain registration and lifecycle are documented in the sibling **`echo-contracts`** repo (`README.md`).
+> **Local-first.** The gateway runs entirely on your machine. No cloud server, no third-party relay. Execute keys and session keys never leave your environment.
 
 ---
 
-## Overview
+## How it works
 
-Echo Gateway has two jobs:
+Echo Gateway combines two things:
 
-1. **Dashboard & control plane (for humans + AI agents):**
-   - Serves a local dashboard where users complete onboarding after starting the gateway.
-   - The dashboard lists **policy contexts** stored in the local KeyStore (each maps a `PolicyInstance` to your **EOA** as `UserOp.sender`). If none exist, onboarding walks you through naming, optional template hints, then **linking** an instance ID after you register on-chain via **echo-contracts**.
-   - Each entry represents one policy instance, the **EOA** used as sender/recipient, owner wallet, and activity. Users can switch contexts in the sidebar.
-   - Exposes an MCP server that agent frameworks (e.g. OpenClaw) use to query tools, submit intents, manage sessions, and monitor activity **for the currently selected context**.
-2. **Execution plane (for transactions):** Explicit transactions are built by the gateway (no separate “build transaction” tool; no RPC intercept). We build UserOperations from agent intents using **user-registered protocols** (allowedTargets) and **allowed selectors**, run **two-stage pre-validation** (PreValidator), then submit via Pimlico.
+1. **Dashboard** — a local web UI at `http://localhost:3000` for onboarding, policy management, session monitoring, and activity history.
+2. **MCP server** — exposes tools that AI agents use to submit swap intents and manage autonomous sessions.
 
-The gateway enforces Echo's security model at the application layer — but the on-chain `EchoPolicyValidator` is always the final authority.
-
----
-
-## Architecture
-
-```
-OpenClaw agent
- │
- ├─ MCP Server (port 3000)          ← agent control plane
- │    ├─ echo_get_available_tools
- │    ├─ echo_submit_intent          intent → pre-val #1 → tool → pre-val #2 → UserOp
- │    ├─ echo_create_session
- │    ├─ echo_execute_session        session intent → pre-val → UserOp
- │    ├─ echo_list_sessions
- │    ├─ echo_revoke_session
- │    └─ echo_get_activity_log
- │
- └─ RPC proxy (/api/rpc)             ← passthrough only (e.g. for dashboard); no intercept
-
-
-Internal components:
- ├─ KeyStore           AES-256 encrypted local file
- │                     executeKey and sessionKey storage
- │                     survives gateway restart
- │
- ├─ UniswapV3Tool      internal tool module (MVP only)
- │                     calls Uniswap Quoter for optimal routing
- │                     builds exactInputSingle calldata
- │                     recipient hardcoded = user EOA
- │
- ├─ PreValidator       two-stage validation before chain submission
- │    ├─ stage 1       intent layer — check policy limits before calling tool
- │    └─ stage 2       transaction layer — verify calldata after tool returns
- │
- └─ UserOpBuilder      constructs ERC-4337 UserOperations (initCode empty)
-                       real-time:  sig = [0x03][pad(executeKey, 32)]  (7702 / validateFor7702)
-                       session:    sig = [0x02][sessionId][pad(sessionKey, 32)]
-                       optional:   eip7702Auth on Pimlico JSON-RPC when required
-```
+The on-chain model uses **EIP-7702 + ERC-4337**:
+- The user's EOA is `UserOp.sender` (tokens stay in the EOA — no pre-deposit)
+- EIP-7702 delegation to `EchoDelegationModule` is activated once during onboarding
+- Real-time swaps use an Execute Key (`sig = [0x03][executeKeyHash]`)
+- Session (DCA) swaps use a Session Key (`sig = [0x02][sessionId][sessionKeyHash]`) — no user confirmation per swap
 
 ---
 
-## Request lifecycle
+## Quick start
 
-### Real-time mode
-
-```
-User → OpenClaw: "buy 100 USDC of ETH"
-
-1. OpenClaw → MCP: echo_submit_intent({
-     tool: "uniswap-v3", action: "swap",
-     tokenIn: "USDC", tokenOut: "WETH", amount: 100
-   })
-
-2. Pre-validation #1 (intent layer):
-   - PolicyInstance active and not paused?
-   - uniswap-v3 in installed tools?
-   - WETH in tokenLimits or explorationBudget?
-   - 100 USDC ≤ maxPerOp?
-   - daily cap not exceeded?
-   - global cap not exceeded?
-   → PASS: forward to UniswapV3Tool
-
-3. UniswapV3Tool:
-   - call Uniswap Quoter → optimal amountOutMinimum
-   - build exactInputSingle calldata
-   - recipient = user EOA (hardcoded, not from agent)
-   → return calldata
-
-4. Pre-validation #2 (transaction layer):
-   - target == Uniswap V3 SwapRouter constant?
-   - selector == exactInputSingle?
-   - decoded recipient == user EOA?
-   - decoded amountIn matches declared intent?
-   → PASS: build UserOperation
-
-5. UserOpBuilder:
-   - sender = user EOA; initCode = empty
-   - signature = [0x03][pad(executeKey, 32)]
-   - gas estimate / sponsor via Pimlico; include eip7702Auth when configured (e.g. `context.json`)
-
-6. Submit to Pimlico bundler
-   → EntryPoint → EchoDelegationModule (7702) → EchoPolicyValidator (on-chain)
-   → PASS → Uniswap swap executes
-
-7. Return { txHash, amountOut } to OpenClaw
-```
-
-### Session mode
-
-```
-User → OpenClaw: "DCA into ETH, 50 USDC/day for 7 days"
-
-1. OpenClaw → MCP: echo_create_session({
-     tool: "uniswap-v3", tokenIn: "USDC", tokenOut: "WETH",
-     amountPerOp: 50, totalBudget: 350, durationDays: 7
-   })
-
-2. Gateway validates params ⊆ PolicyInstance
-   → WalletConnect push to user's phone
-   → user confirms (one tap)
-   → SessionPolicy stored on-chain
-   → Session Key generated locally, stored in KeyStore
-   → return { sessionId }
-
-3. OpenClaw scheduler fires daily:
-   OpenClaw → MCP: echo_execute_session({
-     sessionId: "...",
-     intent: { action: "swap", tokenIn: "USDC", tokenOut: "WETH", amount: 50 }
-   })
-
-4. Same pre-validation #1 + #2 as real-time, but against SessionPolicy
-   signature = [0x02][sessionId][pad(sessionKey, 32)]
-
-5. On-chain: EchoPolicyValidator validates SessionPolicy
-   session.totalSpent updated after pass
-```
-
----
-
-## Two-stage pre-validation
-
-Pre-validation is a UX layer, not a security layer. The on-chain Validator is always the final authority.
-
-**Stage 1 — intent layer** (before calling the tool)
-- Catches obviously invalid requests fast, without wasting a Tool call
-- Returns human-readable errors to the agent immediately
-
-**Stage 2 — transaction layer** (after the tool returns calldata)
-- Echo does not trust the tool's output
-- Independently decodes the calldata and verifies it matches the declared intent
-- Verifies `recipient == user EOA` (`UserOp.sender`) — the most critical check
-- Verifies `target` and `selector` are on the allowlist
-
-If Stage 2 fails, the UserOp is never built. The tool's calldata is rejected.
-
----
-
-## MCP tools reference
-
-| Tool | PRD ref | Description |
-|---|---|---|
-| `echo_get_available_tools()` | MCP-01 | Returns installed tools and their supported actions |
-| `echo_submit_intent(params)` | MCP-02 | Submit a real-time intent. Runs pre-val #1, calls tool, runs pre-val #2, builds and submits UserOp |
-| `echo_create_session(params)` | MCP-03 | Create a SessionPolicy on-chain. Returns sessionId after user confirms |
-| `echo_execute_session(params)` | MCP-04 | Execute one iteration of a session task |
-| `echo_list_sessions()` | MCP-05 | List all active sessions with progress |
-| `echo_revoke_session(sessionId)` | MCP-06 | Revoke a session on-chain after user confirms |
-| `echo_get_activity_log(limit)` | MCP-07 | Fetch recent ValidationPassed/ValidationFailed events |
-
-### Error format
-
-All MCP tools return structured errors on failure:
-
-```json
-{
-  "error": true,
-  "code": "DAILY_LIMIT_EXCEEDED",
-  "message": "WETH daily limit is 500 USDC. You have spent 480 today. Remaining: 20 USDC.",
-  "details": {
-    "token": "WETH",
-    "limit": 500000000,
-    "spent": 480000000,
-    "remaining": 20000000
-  }
-}
-```
-
----
-
-## Key Store
-
-The Key Store is an AES-256 encrypted local file that persists execute keys and session keys across gateway restarts.
-
-- Raw keys are stored only here — never in logs, never transmitted, never on-chain
-- On-chain, only `keccak256(rawKey)` is stored
-- If the Key Store file is deleted, keys must be re-issued (old on-chain hashes become unreachable)
-- The encryption password is derived from an environment variable
-
-```
-~/.echo/keystore.enc
-  executeKeys:
-    { raw: "0x...", instanceId: "0x...", label: "openclaw-main" }
-  sessionKeys:
-    { raw: "0x...", sessionId: "0x...", instanceId: "0x..." }
-```
-
----
-
-## Setup
-
-### Prerequisites
+### 1. Prerequisites
 
 - Node.js 20+
-- A browser to access the local Echo Gateway dashboard (onboarding links your EOA + policy instance after on-chain registration)
-- OpenClaw (or another MCP-compatible agent) installed locally
+- A Sepolia RPC URL (Alchemy free tier works)
+- A Pimlico API key (free tier works) — used as the ERC-4337 bundler + paymaster
+- A browser wallet that supports EIP-7702 (Rabby recommended)
+- Claude Desktop or another MCP-compatible agent
 
-### Install
+### 2. Install
 
 ```bash
-git clone https://github.com/echo-protocol/echo-gateway
 cd echo-gateway
 npm install
+```
+
+### 3. Configure
+
+```bash
 cp .env.example .env
 ```
 
-### Configure
+Edit `.env`:
 
 ```env
-# Chain
-SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+# ── Network ──────────────────────────────────────────
+SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
+PIMLICO_API_KEY=YOUR_PIMLICO_API_KEY
 CHAIN_ID=11155111
 
-# Pimlico
-PIMLICO_API_KEY=your_pimlico_key
+# ── Echo contracts (Sepolia) ─────────────────────────
+POLICY_REGISTRY=0xd5Db48763809061cFc283bF51Df1F158BD237120
+INTENT_REGISTRY=0x9c3c066a6dCbD5ea565171D61F7965B6319567fc
+ECHO_POLICY_VALIDATOR=0xe4fecb0138Ff8E7aDC72b1F142fcbdCAcF12F554
+ECHO_DELEGATION_MODULE=0x9aeAF3881FC24A639434C4e849C52341E8b1cc15
+ECHO_ONBOARDING=0x6622fe1A7612Dc85aAd42F2D326a7a7572aB4805
 
-# Echo contracts (Sepolia) — names match .env.example
-POLICY_REGISTRY=0x...
-INTENT_REGISTRY=0x...
-ECHO_POLICY_VALIDATOR=0x...
-ECHO_DELEGATION_MODULE=0x...
-# Optional: ECHO_ONBOARDING=0x...
+# ── Mock Uniswap (Echo Sepolia deploy) ───────────────
+UNISWAP_V3_ROUTER=0x37bFb0Bc15411FfA581732a0cE2aeb5A943cC75B
+UNISWAP_V3_QUOTER=0x50F359Ae6a5A7796faF45d9D2D54EEa29BBEfe60
 
-# Key Store
-KEYSTORE_PASSWORD=your_local_password
+# ── Policy templates ──────────────────────────────────
+TEMPLATE_CONSERVATIVE=0x153ccd56661fc5ac2a443a0426cb294076170bb32bd17f75580ae627fa64ea99
+TEMPLATE_STANDARD=0x039a844943398a8fa17d671b48de13f72a9218515234641653363b612011a971
+TEMPLATE_ACTIVE=0xb770bc267d97571e554e0ea0bc0cfde88e7d5d7fed3ebc83bb964bdf791ac4ea
 
-# Gateway HTTP (Dashboard + API)
+# ── Gateway ───────────────────────────────────────────
 GATEWAY_PORT=3000
+GATEWAY_HOST=127.0.0.1
 
-# Mock Uniswap stack (MVP on Sepolia) — see "Reference deployment" below
-UNISWAP_V3_ROUTER=0x...
-UNISWAP_V3_QUOTER=0x...
-
-# Template bytes32 IDs (from same deploy)
-TEMPLATE_CONSERVATIVE=0x...
-TEMPLATE_STANDARD=0x...
-TEMPLATE_ACTIVE=0x...
+# ── Privy (optional — embedded wallet login) ──────────
+# PRIVY_APP_ID=YOUR_PRIVY_APP_ID
+# PRIVY_APP_SECRET=YOUR_PRIVY_APP_SECRET
 ```
 
-### Reference deployment (Sepolia — Mock + EIP-7702)
+> **Keystore password:** set `KEYSTORE_PASSWORD` in `.env` if you want to use a fixed passphrase (useful for non-interactive starts). Otherwise the gateway derives one from the environment.
 
-Pinned addresses from a typical **echo-contracts** `Deploy.s.sol` run on **Sepolia**. Copy into `.env` as needed; **redeploys change these** — treat as examples unless you own that deployment.
+### 4. Run
 
-**Echo Protocol mock contracts (Sepolia)**
+**Development** (hot reload via `tsx watch`):
+```bash
+npm run dev
+```
 
-| Contract | Address |
-|----------|---------|
-| MockWETH | `0xD9100773B0B2717B927265Ce92afeA7c3dCA620E` |
-| MockUSDC | `0x74c954C2e6f090d0Ef94cA9A220f5B4D70aB6A43` |
-| MockQuoterV2 | `0x4683a16b9D165ff8EaA90b1cD711c62caBA9c70e` |
-| MockSwapRouter | `0x68a27E6b5E671375bA5b2De857DaeB4E757a9e17` |
-
-Gateway maps **`UNISWAP_V3_ROUTER`** → MockSwapRouter, **`UNISWAP_V3_QUOTER`** → MockQuoterV2. MockWETH / MockUSDC are **not** separate env vars; the Dashboard and scripts default token lists point at these two addresses.
-
-**Core deployment (EIP-7702 path)**
-
-| Contract | Address | `.env` key |
-|----------|---------|------------|
-| PolicyRegistry | `0x97d34e2af18c20971BE7F1D85Abe73624A13762b` | `POLICY_REGISTRY` |
-| IntentRegistry | `0x69961Da79ad0d8D944357AdEE272E30C3c6E9643` | `INTENT_REGISTRY` |
-| EchoPolicyValidator | `0xb75a300d766b30B5DCec9F79406A9719dF0e350c` | `ECHO_POLICY_VALIDATOR` |
-| EchoDelegationModule | `0x4b6f847f5D85539895A3D9B7b8CE34fF086a0a86` | `ECHO_DELEGATION_MODULE` |
-| EchoOnboarding | `0xe7572264D59BD249119aD83ED31E92d1E49bA7bb` | `ECHO_ONBOARDING` (optional) |
-
-**Policy template IDs (`bytes32`)**
-
-| Template | ID |
-|----------|-----|
-| Conservative | `0x153ccd56661fc5ac2a443a0426cb294076170bb32bd17f75580ae627fa64ea99` |
-| Standard | `0x039a844943398a8fa17d671b48de13f72a9218515234641653363b612011a971` |
-| Active | `0xb770bc267d97571e554e0ea0bc0cfde88e7d5d7fed3ebc83bb964bdf791ac4ea` |
-
-Use `TEMPLATE_CONSERVATIVE`, `TEMPLATE_STANDARD`, `TEMPLATE_ACTIVE` in `.env` for the three rows above.
-
-### Start
-
+**Production** (compile then run):
 ```bash
 npm run build
 npm start
 ```
 
-The gateway starts the HTTP server (dashboard + API). RPC proxy is at `/api/rpc` (passthrough only; no intercept).
+The gateway listens on `http://localhost:3000` (or `GATEWAY_PORT`).
 
-After the process starts, **open the dashboard in your browser first**:
+---
 
-- If there are no contexts in the local KeyStore, the dashboard enters onboarding:
-  - connect your wallet (EOA),
-  - set a nickname and policy limits,
-  - **Guided path (recommended):** `POST /api/onboarding/prepare` → sign EIP-7702 `authorize()` (delegate = `ECHO_DELEGATION_MODULE`) → submit `EchoOnboarding.registerInstanceAndEip7702` from the dashboard → `POST /api/onboarding/finalize` + `POST /api/context` (optional `eip7702Auth`). Requires `ECHO_ONBOARDING` in `.env`.
-  - **Manual path:** register elsewhere, then paste **instance ID** and use `POST /api/register-key` (Dashboard “Manual link”).
-- If there are existing contexts, the dashboard lists them and lets you switch for management.
+## Onboarding (first run)
 
-Once linking is complete, you can connect MCP-compatible agents. Tools use the **currently selected context** (EOA + instance) in the dashboard.
+Open `http://localhost:3000` in your browser. If no account exists in the local KeyStore, the dashboard walks you through onboarding:
 
-### Connect to OpenClaw
+### Step 1 — Connect wallet
+Click **Connect wallet** in the bottom-left sidebar. Rabby, MetaMask, OKX Wallet, or any EIP-6963 browser wallet works. Rabby is recommended for EIP-7702 support.
 
-Add to your `openclaw_settings.json`:
+### Step 2 — Name your account
+Give the account a label (e.g. `main`, `trading`). Select a policy template:
+- **Conservative** — tight daily limits, small per-swap cap
+- **Standard** — balanced defaults
+- **Active** — higher limits for frequent trading
+
+### Step 3 — Set token limits
+Add token limits for the assets your agent will trade (e.g. USDC → WETH). These are enforced on-chain by `EchoPolicyValidator`.
+
+### Step 4 — Register on-chain (one transaction)
+Click **Activate**. This sends a single **type-4 (EIP-7702) transaction** that:
+1. Activates delegation from your EOA to `EchoDelegationModule`
+2. Calls `EchoOnboarding.registerInstanceAndEip7702` to register your `PolicyInstance`
+
+Sign in your wallet. After the transaction confirms, your account is active and the gateway stores your Execute Key locally.
+
+> **EIP-7702 delegation is permanent after this transaction.** Future UserOps don't require re-signing the authorization.
+
+---
+
+## Connect to Claude Desktop
+
+Add to your Claude Desktop `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "echo": {
-      "command": "npx",
-      "args": ["@echo-protocol/gateway-mcp"],
+    "echo-gateway": {
+      "command": "node",
+      "args": ["C:/path/to/echo-mvp/echo-gateway/dist/index.js"],
       "env": {
-        "ECHO_GATEWAY": "http://localhost:3000"
+        "GATEWAY_PORT": "3000"
       }
     }
   }
 }
 ```
 
-Set your Execute Key (generated in Echo Dashboard):
+Or for development (no build step):
 
-```env
-ECHO_EXECUTE_KEY=0x...
-ECHO_INSTANCE_ID=0x...
+```json
+{
+  "mcpServers": {
+    "echo-gateway": {
+      "command": "npx",
+      "args": ["tsx", "C:/path/to/echo-mvp/echo-gateway/src/index.ts"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop after editing. The gateway serves both the HTTP dashboard and the MCP server from the same process.
+
+---
+
+## MCP tools
+
+| Tool | Description |
+|------|-------------|
+| `echo_get_context` | Returns the active account (instanceId, EOA, network). Always call this first. |
+| `echo_get_policy` | Returns policy limits (daily cap, token limits, budget used). |
+| `echo_submit_intent` | Execute a real-time swap. Runs pre-validation, builds and submits a UserOp via Pimlico. No user confirmation required. |
+| `echo_create_session` | Create an autonomous session (DCA). Returns a `pendingTx` the user must sign once in the dashboard. |
+| `echo_execute_session` | Execute one iteration of a session (e.g. daily DCA buy). No user confirmation required. |
+| `echo_list_sessions` | List active sessions for the current account. |
+| `echo_revoke_session` | Revoke a session on-chain. Returns a `pendingTx` for the user to sign. |
+| `echo_pause_instance` | Pause/unpause the PolicyInstance. Returns a `pendingTx`. |
+
+### Example: real-time swap
+
+```
+echo_submit_intent({
+  tokenIn:   "0xBa9D46448e4142AC7a678678eFf6882D9197d716",  // MockUSDC
+  tokenOut:  "0xF0527287E6B7570BdaaDe7629C47D60a3e0eF104",  // MockWETH
+  amount:    "10000000",   // 10 USDC (6 decimals)
+  direction: "exactInput"
+})
+```
+
+### Example: daily DCA (session)
+
+```
+# 1. Create session (user signs once in dashboard)
+echo_create_session({
+  instanceId:      "0x...",
+  tokenIn:         "0xBa9D46448e...",   // MockUSDC
+  tokenOut:        "0xF0527287E6...",   // MockWETH
+  maxAmountPerOp:  "10000000",          // 10 USDC max per swap
+  totalBudget:     "300000000",         // 300 USDC total
+  maxOpsPerDay:    1,
+  sessionExpiry:   1776729600           // Unix timestamp
+})
+
+# 2. Execute daily (no user confirmation needed)
+echo_execute_session({
+  sessionId: "0xb90ea3e2...",
+  amount:    "10000000"
+})
+```
+
+---
+
+## Deployed contracts (Sepolia — 2026-03-20)
+
+| Contract | Address |
+|----------|---------|
+| PolicyRegistry | `0xd5Db48763809061cFc283bF51Df1F158BD237120` |
+| IntentRegistry | `0x9c3c066a6dCbD5ea565171D61F7965B6319567fc` |
+| EchoPolicyValidator | `0xe4fecb0138Ff8E7aDC72b1F142fcbdCAcF12F554` |
+| EchoDelegationModule | `0x9aeAF3881FC24A639434C4e849C52341E8b1cc15` |
+| EchoOnboarding | `0x6622fe1A7612Dc85aAd42F2D326a7a7572aB4805` |
+| MockSwapRouter | `0x37bFb0Bc15411FfA581732a0cE2aeb5A943cC75B` |
+| MockQuoterV2 | `0x50F359Ae6a5A7796faF45d9D2D54EEa29BBEfe60` |
+| MockWETH | `0xF0527287E6B7570BdaaDe7629C47D60a3e0eF104` |
+| MockUSDC | `0xBa9D46448e4142AC7a678678eFf6882D9197d716` |
+
+---
+
+## Local data
+
+The gateway stores data in `~/.echo/`:
+
+| File | Contents |
+|------|----------|
+| `keystore.json` | AES-256-GCM encrypted execute keys and session keys |
+| `context.json` | Active account selection (`activeInstanceId`) |
+| `activity.json` | Local swap history (appended on each successful submit) |
+
+> Raw keys are never transmitted or logged. On-chain, only `keccak256(rawKey)` is stored. If `keystore.json` is deleted, execute keys must be re-issued on-chain.
+
+---
+
+## Architecture
+
+```
+Claude Desktop (or any MCP client)
+ │
+ └─ MCP Server (stdio / same process as HTTP)
+      ├─ echo_get_context
+      ├─ echo_submit_intent   → PreValidator → UniswapV3Tool → UserOpBuilder → Pimlico
+      ├─ echo_create_session  → builds calldata for user to sign in dashboard
+      ├─ echo_execute_session → PreValidator → UniswapV3Tool → UserOpBuilder → Pimlico
+      ├─ echo_list_sessions   → reads KeyStore + on-chain PolicyRegistry
+      └─ echo_revoke_session  → builds calldata for user to sign
+
+HTTP server (Express, same port)
+ ├─ GET  /              → Dashboard (index.html)
+ ├─ GET  /api/context   → active account
+ ├─ GET  /api/policy    → on-chain policy state
+ ├─ GET  /api/sessions  → session list (pending + active)
+ ├─ POST /api/sessions/confirm     → store real on-chain sessionId after activation tx
+ ├─ POST /api/sessions/resolve-tx  → resolve stuck pending session from txHash
+ ├─ GET  /api/activity  → local activity log
+ ├─ GET  /api/keys      → list execute key accounts
+ └─ POST /api/register-key → link existing on-chain instance
+
+Internal components:
+ ├─ KeyStore        AES-256-GCM encrypted file (~/.echo/keystore.json)
+ ├─ PreValidator    two-stage off-chain policy check (mirrors on-chain logic)
+ ├─ UserOpBuilder   builds + sponsors UserOps via Pimlico (pm_sponsorUserOperation)
+ ├─ UniswapV3Tool   quotes via MockQuoterV2, builds exactInputSingle calldata
+ └─ ActivityLog     append-only local swap log (~/.echo/activity.json)
 ```
 
 ---
@@ -345,51 +273,44 @@ ECHO_INSTANCE_ID=0x...
 
 ```
 src/
-├── index.ts                gateway entry point
-├── config/
-│   └── index.ts            environment config and validation
-├── keystore/
-│   └── KeyStore.ts         AES-256 encrypted key storage
-├── tools/
-│   └── UniswapV3Tool.ts    Uniswap V3 tool module (MVP)
-├── validation/
-│   ├── PreValidator.ts     two-stage pre-validation
-│   └── errors.ts           structured error types
-├── mcp/
-│   ├── McpServer.ts        MCP server setup
-│   └── tools/              one file per MCP tool
+├── index.ts                  entry point — starts HTTP + MCP server
+├── config/index.ts           env config and contract addresses
+├── keystore/KeyStore.ts      AES-256-GCM key storage
+├── mcp/McpServer.ts          MCP tool handlers
 ├── http/
+│   ├── HttpServer.ts         Express server + route registration
 │   └── routes/
-│       └── rpcProxy.ts     RPC passthrough (/api/rpc); no intercept
-├── userop/
-│   └── UserOpBuilder.ts    ERC-4337 UserOp construction
+│       ├── keystore.ts       /api/context, /api/keys, /api/register-key
+│       ├── policy.ts         /api/policy, /api/pause
+│       └── sessions.ts       /api/sessions (CRUD + confirm + resolve-tx)
+├── userop/UserOpBuilder.ts   ERC-4337 UserOp construction + Pimlico submission
+├── validation/PreValidator.ts two-stage pre-flight validation
+├── tools/UniswapV3Tool.ts    swap quote + calldata builder
+├── activity/ActivityLog.ts   local activity log
 ├── contracts/
-│   ├── abis.ts             contract ABIs
-│   └── addresses.ts        Sepolia deployment addresses
-└── types/
-    └── index.ts            shared TypeScript types
+│   └── PolicyRegistryABI.ts  on-chain ABI
+└── dashboard/index.html      single-file dashboard UI
 ```
 
 ---
 
-## Dependencies
+## Session lifecycle notes
 
-| Package | Purpose |
-|---|---|
-| `viem` | Ethereum interaction |
-| `@modelcontextprotocol/sdk` | MCP server implementation |
-| `permissionless` | ERC-4337 UserOp building |
-| `dotenv` | Environment config |
+Sessions have a two-phase activation flow:
+
+1. `echo_create_session` generates a session key locally, stores it in KeyStore, and returns a `pendingTx` (calldata for `PolicyRegistry.createSession`).
+2. The user must sign this transaction from the dashboard (Sessions page → **Sign to activate**). After the tx confirms, the dashboard parses the `SessionCreated` event to capture the real on-chain `sessionId` and writes it back to the keystore.
+3. `echo_execute_session` uses the session key (no user confirmation) for each swap.
+
+If a session tx was signed outside the auto-confirm flow, use the **"Already signed? Paste tx hash"** resolver on the Sessions page to link the confirmed sessionId to the local key.
 
 ---
 
-## What the gateway cannot protect against
+## Security notes
 
-- If the user's private key is stolen, an attacker can modify the PolicyInstance and bypass all limits
-- The gateway is a pre-flight check layer — the on-chain Validator is the real security boundary
-- If the gateway process itself is compromised (e.g. malware on the user's machine), the attacker holds the Execute Key and can operate within MetaPolicy limits
-
-In Phase 4, a TEE-isolated remote gateway will provide the same security guarantees without local deployment.
+- The gateway enforces policy pre-flight at the application layer — the on-chain `EchoPolicyValidator` is always the final authority
+- If `keystore.json` is compromised, an attacker can operate within the PolicyInstance limits but cannot change those limits (that requires the owner EOA)
+- The KEYSTORE_PASSWORD should not be left in plaintext in production; use a secrets manager or prompt on startup
 
 ---
 
