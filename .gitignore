@@ -8,3 +8,4 @@ coverage/
 .vitest/
 smoke_test/
 .vscode/
+.claude

@@ -34,6 +34,9 @@ export interface GatewayConfig {
     active:       `0x${string}`;
   };
 
+  // WalletConnect / Reown Project ID (optional — enables mobile wallet EIP-7702 activation)
+  walletConnectProjectId: string | null;
+
   // Privy embedded wallet auth (optional)
   privy: {
     appId:     string;
@@ -105,6 +108,11 @@ export function loadConfig(): GatewayConfig {
       standard:     bytes32('TEMPLATE_STANDARD'),
       active:       bytes32('TEMPLATE_ACTIVE'),
     },
+
+    walletConnectProjectId: (() => {
+      const id = process.env['WALLETCONNECT_PROJECT_ID']?.trim();
+      return id ?? null;
+    })(),
 
     privy: (() => {
       const appId     = process.env['PRIVY_APP_ID']?.trim();

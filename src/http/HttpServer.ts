@@ -71,11 +71,12 @@ export class HttpServer {
     // Config endpoint — exposes non-sensitive config to Dashboard JS
     this.app.get('/api/config', (_req: Request, res: Response) => {
       res.json({
-        chainId:        config.chainId,
-        contracts:      config.contracts,
-        templates:      config.templates,
-        echoOnboarding: config.echoOnboarding,
-        privyAppId:     config.privy?.appId ?? null,
+        chainId:                  config.chainId,
+        contracts:                config.contracts,
+        templates:                config.templates,
+        echoOnboarding:           config.echoOnboarding,
+        privyAppId:               config.privy?.appId ?? null,
+        walletConnectProjectId:   config.walletConnectProjectId,
       });
     });
 
